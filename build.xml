@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<!-- ==================================================== -->
+<!-- Build file for web application                       -->
+<!-- author: oleg shteynbuk                               -->
+<!-- ==================================================== -->
+
+<project name="InteractionsServlet" basedir=".">
+
+	<property name="classdir" location="${basedir}/build/classes" />
+	<property name="eclipse_classdir" location="${basedir}/classes" />
+	<property name="ServerWebDir" value="C:\pkgs\apache-tomcat-5.5.27\webapps\" />
+	<property name="buildDir" value="${basedir}/build" />
+	<property name="warDir" value="${buildDir}/war" />
+
+	<property name="src" value="${basedir}/src" />
+	<property name="web" value="${basedir}/web" />
+	<property name="conf" value="${basedir}/conf" />
+
+	<property name="warFile" value="InteractionsServlet.war" />
+	<property name="deploy_dir" value="deploy" />
+	<!-- DEBUG setting -->
+
+	<property name="debug" value="on" />
+
+	<target name="init">
+		<!-- Create build, deploy and Web-inf dir -->
+		<mkdir dir="${buildDir}" />
+		<mkdir dir="${warDir}/WEB-INF" />
+		<mkdir dir="${warDir}/WEB-INF/classes" />
+		<mkdir dir="${warDir}/WEB-INF/lib" />
+		<mkdir dir="${deploy_dir}" />
+
+	</target>
+
+	<!-- Compile Java Files -->
+	<target name="compile" depends="init">
+		<javac srcdir="${src}" destdir="${warDir}/WEB-INF/classes" debug="${debug}" source="1.5" target="1.5">
+			<classpath>
+				<fileset dir="lib">
+					<include name="**/*.jar" />
+				</fileset>
+			</classpath>
+		</javac>
+	</target>
+
+	<!-- Create the War File -->
+	<target name="buildWar" depends="compile">
+		<!-- when using eclipse for compilation
+		<copy todir="${warDir}/WEB-INF/classes">
+			<fileset dir="${eclipse_classdir}" includes="**/*.class, **/*.properties" />
+		</copy>
+-->
+		<copy todir="${warDir}/WEB-INF">
+			<fileset dir="${web}" includes="web.xml" />
+		</copy>
+
+		<copy todir="${warDir}/WEB-INF/classes">
+			<fileset dir="${conf}" includes="log4j.properties," />
+		</copy>
+
+		<copy todir="${warDir}/WEB-INF/lib">
+			<fileset dir="lib">
+				<exclude name="servlet-api.jar" />
+			</fileset>
+		</copy>
+
+		<!-- Create war file  -->
+		<jar jarfile="${deploy_dir}/${warFile}" basedir="${warDir}" />
+	</target>
+
+	<target name="deployLocalWar" depends="buildWar">
+		<!-- copy .war to webapps dir -->
+		<copy file="${deploy_dir}/${warFile}" todir="${ServerWebDir}">
+		</copy>
+	</target>
+
+	<target name="deployLocalFilesExpandedWar" depends="cleanServerWar">
+		<!-- just copy all files  -->
+		<copy todir="${ServerWebDir}/InteractionsServlet/WEB-INF">
+			<fileset dir="${warDir}" />
+		</copy>
+	</target>
+
+	<target name="clean">
+		<delete dir="${buildDir}" />
+		<delete dir="${deploy_dir}" />
+	</target>
+
+	<target name="cleanServerWar">
+		<delete dir="${ServerWebDir}/InteractionsServlet" />
+		<delete file="${ServerWebDir}/${warFile}" />
+	</target>
+
+</project>
