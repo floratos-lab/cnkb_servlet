@@ -335,7 +335,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		else if (methodName.equalsIgnoreCase(GET_VERSION_DESCRIPTOR))
 		{
 			String context = tokens[2].trim();
-			aSql = "SELECT version FROM dataset where name='" + context + "'";
+			aSql = "SELECT version, authentication_yn FROM dataset where name='" + context + "'";
 		}
 	   
 		return aSql;
