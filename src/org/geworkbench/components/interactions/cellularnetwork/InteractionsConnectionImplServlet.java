@@ -169,18 +169,19 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				logger
 						.error(
 								"doPost(HttpServletRequest, HttpServletResponse) - This should never happens as Oracle is not used any more....", null); //$NON-NLS-1$
-			}  
-
+			} 			
+		 
+			 
 			Connection conn = DriverManager.getConnection(mysql_url, mysql_user, mysql_passwd);
 			if (needAuthentication(tokens, conn, req))
 				askForPassword(resp);
 			else
 			{		  
 			    String sql = getSqlString(tokens, conn);
-			    if (logger.isDebugEnabled()) {
+			    /*if (logger.isDebugEnabled()) {
 					logger
 							.debug("doPost(HttpServletRequest, HttpServletResponse) - InteractionsConnectionImplServlet doPost, sql string is " + sql  ); //$NON-NLS-1$
-				}
+				} */
 			    
 			    Statement statement = conn.createStatement();
 			    ResultSet rs = statement.executeQuery(sql);
@@ -320,7 +321,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			String context = tokens[3].trim();
 			String version = tokens[4].trim();
 			int datasetId = getDatasetId(conn, context, version);
-			aSql = "SELECT pi.ms_id1, pi.ms_id2, pi.gene1, pi.gene2, pi.confidence_value, pi.is_modulated, pi.source, it.interaction_type, it.description FROM pairwise_interaction pi, interaction_dataset ids, interaction_type it";
+			aSql = "SELECT pi.ms_id1, pi.ms_id2, pi.gene1, pi.gene2, pi.confidence_value, pi.db1_xref, pi.db2_xref, pi.is_modulated, pi.source, it.interaction_type, it.description FROM pairwise_interaction pi, interaction_dataset ids, interaction_type it";
 			aSql += " WHERE (ms_id1=" + geneId + " OR ms_id2=" + geneId;
 			aSql += ") AND pi.interaction_type=it.id AND pi.id=ids.interaction_id And ids.dataset_id=" + datasetId;
 		}
