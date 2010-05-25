@@ -18,8 +18,7 @@ import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.Cookie;
+import javax.servlet.http.HttpServletResponse; 
 
 import sun.misc.BASE64Decoder;
 
@@ -131,6 +130,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		
 		
 		String methodName = "";
+		boolean isSqlException = false;
 		
 		try {
 
@@ -252,6 +252,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				resp.getWriter().print(e.getMessage());
 				resp.getWriter().close();
 				logger.error("get IOException: ", e);
+				isSqlException = true;
 			} catch (IOException ioe) {
 				logger
 						.error(
@@ -263,6 +264,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				resp.getWriter().print(e.getMessage());
 				resp.getWriter().close();
 				logger.error("get SQLException: ", e);
+				isSqlException = true;
 				
 			} catch (IOException ioe) {
 				logger
@@ -285,7 +287,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		}
 		finally
 		{
-			  if (!methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION))  
+			  if ((!methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION)) || isSqlException == true)  
 	          {    
 				     try{
 				    	 if (conn != null )
@@ -354,7 +356,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		} else if (methodName.equalsIgnoreCase(GET_INTERACTION_TYPES)) {
 			aSql = "SELECT  interaction_type FROM  interaction_type";
 		} else if (methodName.equalsIgnoreCase(GET_DATASET_NAMES)) {
-			aSql = "SELECT name FROM dataset";
+			aSql = "SELECT DISTINCT name FROM dataset";
 		} else if (methodName.equalsIgnoreCase(GET_VERSION_DESCRIPTOR)) {
 			String context = tokens[2].trim();
 			aSql = "SELECT version, authentication_yn FROM dataset where name='"
