@@ -51,12 +51,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 	private static final Logger logger = Logger
 			.getLogger(InteractionsConnectionImplServlet.class);
 
-	/*
-	 * private static final String PSWD_ORACLE_LINKT0CELLNET = "linkt0cellnet";
-	 * private static final String USER_INTERACTION_RO = "interaction_ro";
-	 * private static final String JDBC_ORACLE_THIN_URL =
-	 * "jdbc:oracle:thin:@adora.cgc.cpmc.columbia.edu:1521:BIODB2";
-	 */
+	 
 	// currently in two files
 	static final int SPLIT_ALL = -2;
 	static final String DEL = "|";
@@ -79,7 +74,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 	private static String dataset_user;
 	private Connection conn = null;
 	private PreparedStatement statement = null;
-	private static String message = "Error processing SQL query";
+	 
 
 	@Override
 	public void init() throws ServletException {
@@ -132,9 +127,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 		boolean isSqlException = false;
 
 		try {
-
-			String db = null;
-
+			 
 			if (logger.isDebugEnabled()) {
 				logger
 						.debug("doPost(HttpServletRequest, HttpServletResponse) - InteractionsConnectionImplServlet doPost, you got here  ---"); //$NON-NLS-1$
@@ -164,22 +157,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 			String inString = new String(input);
 
 			String[] tokens = inString.split(REGEX_DEL, SPLIT_ALL);
-			db = tokens[0];
-			methodName = tokens[1].trim();
+		 
+			methodName = tokens[0].trim();
 
 			if (methodName.equalsIgnoreCase(CLOSE_DB_CONNECTION))
 				return;
-
-			if (db.equals(ORACLE)) {
-
-				/*
-				 * jdbcURL = JDBC_ORACLE_THIN_URL; user = USER_INTERACTION_RO;
-				 * pswd = PSWD_ORACLE_LINKT0CELLNET;
-				 */
-				logger
-						.error(
-								"doPost(HttpServletRequest, HttpServletResponse) - This should never happens as Oracle is not used any more....", null); //$NON-NLS-1$
-			}
+ 
 
 			if (conn == null || conn.isClosed())
 				conn = DriverManager.getConnection(mysql_url, mysql_user,
@@ -191,16 +174,16 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 			else {
 				ResultSet rs = null;				
 				if (methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION)) {
-					String geneId = tokens[2].trim();
-					String context = tokens[3].trim();
-					String version = tokens[4].trim();
+					String geneId = tokens[1].trim();
+					String context = tokens[2].trim();
+					String version = tokens[3].trim();
 					rs = this.getPairWiseInteraction(geneId, context, version);
 				} else if (methodName.equalsIgnoreCase(GET_INTERACTION_TYPES)) {
 					rs = this.getInteractionTypes();
 				} else if (methodName.equalsIgnoreCase(GET_DATASET_NAMES)) {
 					rs = this.getDatasetNames();
 				} else if (methodName.equalsIgnoreCase(GET_VERSION_DESCRIPTOR)) {
-					String context = tokens[2].trim();
+					String context = tokens[1].trim();
 					rs = this.getVersionDescriptor(context);
 				}
  
@@ -305,13 +288,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 
 	private boolean needAuthentication(String[] tokens, 
 			HttpServletRequest req) throws IOException, SQLException {
-		String methodName = tokens[1];
+		String methodName = tokens[0];
 
 		if (!methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION))
 			return false;
 		else {
-			String context = tokens[3];
-			String version = tokens[4];
+			String context = tokens[2];
+			String version = tokens[3];
 			if (getAuthentication(context, version).equalsIgnoreCase("N"))
 				return false;
 			String userInfo = req.getHeader("Authorization");
