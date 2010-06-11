@@ -342,7 +342,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 	private ResultSet getDatasetNames() throws SQLException 
 	{
 		String aSql = null;
-		aSql = "SELECT DISTINCT name FROM dataset";
+		aSql = "SELECT dataset.name, count(dataset.name) as interaction_count";
+        aSql += " FROM interaction_dataset, dataset";
+        aSql += " WHERE interaction_dataset.dataset_id = dataset.id group by dataset.name;";
 		statement = conn.prepareStatement(aSql);		 
 		ResultSet rs = statement.executeQuery();
 		return rs;
@@ -351,8 +353,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 	private ResultSet getVersionDescriptor(String context) throws SQLException 
 	{
 		String aSql = null;
-		aSql = "SELECT version, authentication_yn FROM dataset where name='"
-			+ context + "'";
+		aSql = "SELECT DISTINCT version, authentication_yn FROM interaction_dataset, dataset where dataset.name='"
+			+ context + "' AND interaction_dataset.dataset_id = dataset.id;";
 		statement = conn.prepareStatement(aSql);		 
 		ResultSet rs = statement.executeQuery();
 		return rs;
