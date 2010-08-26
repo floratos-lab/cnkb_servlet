@@ -13,6 +13,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.PreparedStatement;
 import java.util.Properties;
+import java.util.List;
+import java.util.ArrayList;
 
 import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
@@ -37,7 +39,8 @@ import sun.misc.BASE64Decoder;
  * @see ResultSetlUtil
  * 
  */
-public class InteractionsConnectionImplServlet extends HttpServlet  implements SingleThreadModel {
+public class InteractionsConnectionImplServlet extends HttpServlet implements
+		SingleThreadModel {
 	private static final int MIN_DATA_LENGTH = 1;
 	private static final String GET_PAIRWISE_INTERACTION = "getPairWiseInteraction";
 	private static final String GET_INTERACTION_TYPES = "getInteractionTypes";
@@ -51,7 +54,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 	private static final Logger logger = Logger
 			.getLogger(InteractionsConnectionImplServlet.class);
 
-	 
 	// currently in two files
 	static final int SPLIT_ALL = -2;
 	static final String DEL = "|";
@@ -74,7 +76,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 	private static String dataset_user;
 	private Connection conn = null;
 	private PreparedStatement statement = null;
-	 
 
 	@Override
 	public void init() throws ServletException {
@@ -127,7 +128,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 		boolean isSqlException = false;
 
 		try {
-			 
+
 			if (logger.isDebugEnabled()) {
 				logger
 						.debug("doPost(HttpServletRequest, HttpServletResponse) - InteractionsConnectionImplServlet doPost, you got here  ---"); //$NON-NLS-1$
@@ -157,12 +158,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 			String inString = new String(input);
 
 			String[] tokens = inString.split(REGEX_DEL, SPLIT_ALL);
-		 
+
 			methodName = tokens[0].trim();
 
 			if (methodName.equalsIgnoreCase(CLOSE_DB_CONNECTION))
 				return;
- 
 
 			if (conn == null || conn.isClosed())
 				conn = DriverManager.getConnection(mysql_url, mysql_user,
@@ -172,9 +172,10 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 				askForPassword(resp);
 
 			else {
-				ResultSet rs = null;				
+				ResultSet rs = null;
+				String geneId = null;
 				if (methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION)) {
-					String geneId = tokens[1].trim();
+					geneId = tokens[1].trim();
 					String context = tokens[2].trim();
 					String version = tokens[3].trim();
 					rs = this.getPairWiseInteraction(geneId, context, version);
@@ -186,15 +187,22 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 					String context = tokens[1].trim();
 					rs = this.getVersionDescriptor(context);
 				}
- 
+                 
 				PrintWriter out = resp.getWriter();
 
 				String metaData = new String();
+				String gene1Data = "";
 				ResultSetMetaData rsmd;
 				rsmd = rs.getMetaData();
 				int numberOfColumns = rsmd.getColumnCount();
-
+				
 				// get metadata
+				if (methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION))  
+				{
+					metaData = "ms_id1" + DEL + "db1_xref" + DEL + "gene1" + DEL;
+					gene1Data = getGeneDataByEntrezId(geneId);
+				}
+				
 				for (int i = 1; i <= numberOfColumns; i++) {
 					if (i > 1) {
 						metaData += DEL;
@@ -202,19 +210,40 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 					metaData += rsmd.getColumnName(i);
 				}
 				out.println(metaData);
-
+				
 				// get values
-				while (rs.next()) {
-					String row = new String();
-
-					for (int i = 1; i <= numberOfColumns; i++) {
-						if (i > 1) {
-							row += DEL;
-						}
-						row += rs.getString(i);
+				
+				if (methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION))
+				{
+					
+					while (rs.next()) {					 
+						   if (rs.getString("ms_id2").equals(geneId))						    							   
+							   continue;						
+						   String row = gene1Data;                           
+						   for (int i = 1; i <= numberOfColumns; i++) {							 
+						      row += DEL + rs.getString(i);
+						   }
+						   out.println(row);
 					}
-					out.println(row);
+				
+				
 				}
+				else
+				{
+				    while (rs.next()) {					 
+					   String row = new String();
+
+					   for (int i = 1; i <= numberOfColumns; i++) {
+						  if (i > 1) {
+							row += DEL;
+						  }
+					      row += rs.getString(i);
+					   }
+					   out.println(row);
+				    }
+				
+				}
+				
 
 				out.flush();
 				out.close();
@@ -286,8 +315,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 
 	}
 
-	private boolean needAuthentication(String[] tokens, 
-			HttpServletRequest req) throws IOException, SQLException {
+	private boolean needAuthentication(String[] tokens, HttpServletRequest req)
+			throws IOException, SQLException {
 		String methodName = tokens[0];
 
 		if (!methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION))
@@ -312,62 +341,118 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 		return true;
 	}
 	
-	 
-	
-	private ResultSet getPairWiseInteraction(String geneId, String context, String version) throws SQLException 
-	{
+	/*private ResultSet getPairWiseInteraction_old(String geneId, String context,
+			String version) throws SQLException {
 		String aSql = null;
 		int datasetId = getDatasetId(conn, context, version);
 		aSql = "SELECT pi.ms_id1, pi.ms_id2, pi.gene1, pi.gene2, pi.confidence_value, pi.db1_xref, pi.db2_xref, it.interaction_type FROM pairwise_interaction pi, interaction_dataset ids, interaction_type it";
 		aSql += " WHERE (ms_id1= ?" + " OR ms_id2= ?";
 		aSql += ") AND pi.interaction_type=it.id AND pi.id=ids.interaction_id And ids.dataset_id="
 				+ datasetId;
-	    statement = conn.prepareStatement(aSql);
+		statement = conn.prepareStatement(aSql);
 		statement.setString(1, geneId);
 		statement.setString(2, geneId);
+		ResultSet rs = statement.executeQuery();
+
+		return rs;
+	}*/	
+	
+	
+	private ResultSet getPairWiseInteraction(String geneId, String context,
+			String version) throws SQLException {
+		String aSql = null;
+		
+		
+		String interactionIdList = getInteractionIdsByEntrezId(geneId, context, version);
+				 
+		if (interactionIdList.equals(""))
+			interactionIdList="0";
+		aSql =  "SELECT pe.primary_accession as ms_id2, ds.name as db2_xref, pe.gene_symbol as gene2, i.confidence_value as confidence_value, it.name as interaction_type ";
+		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds ";
+		aSql += "WHERE pe.id=ip.participant_id ";
+		aSql += "AND pe.accession_db=ds.id ";
+		aSql += "AND ip.interaction_id=i.id ";
+		aSql += "AND i.interaction_type=it.id ";	 
+		aSql += "AND i.id in (" + interactionIdList + ")";	
+		              
+		statement = conn.prepareStatement(aSql);			 
 		ResultSet rs = statement.executeQuery();
 		 
 		return rs;
 	}
 	
-	private ResultSet getInteractionTypes() throws SQLException 
-	{
-		String aSql = null;
-		aSql = "SELECT  interaction_type FROM  interaction_type";
-		statement = conn.prepareStatement(aSql);		 
-		ResultSet rs = statement.executeQuery();
-		return rs;
-	}
 	
-	private ResultSet getDatasetNames() throws SQLException 
-	{
-		String aSql = null;
-		aSql = "SELECT dataset.name, count(dataset.name) as interaction_count";
-        aSql += " FROM interaction_dataset, dataset";
-        aSql += " WHERE interaction_dataset.dataset_id = dataset.id group by dataset.name;";
-		statement = conn.prepareStatement(aSql);		 
-		ResultSet rs = statement.executeQuery();
-		return rs;
-	}
-	
-	private ResultSet getVersionDescriptor(String context) throws SQLException 
-	{
-		String aSql = null;
-		aSql = "SELECT DISTINCT version, authentication_yn FROM interaction_dataset, dataset where dataset.name='"
-			+ context + "' AND interaction_dataset.dataset_id = dataset.id;";
-		statement = conn.prepareStatement(aSql);		 
-		ResultSet rs = statement.executeQuery();
-		return rs;
-	}	 
 
-	private String getAuthentication(String context,
-			String version) throws SQLException {
+	private ResultSet getInteractionTypes() throws SQLException {
+		String aSql = null;
+		aSql = "SELECT name as interaction_type FROM  interaction_type";
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
+	}
+
+	private ResultSet getDatasetNames() throws SQLException {
+		String aSql = null;
+
+		aSql = "SELECT i.name, COUNT(i.name) as interaction_count ";
+		aSql += "FROM interactome i, interactome_version v, interaction_interactome_version iv ";
+		aSql += "WHERE i.id=v.interactome_id ";
+		aSql += "AND v.id=iv.interactome_version_id ";
+		aSql += "GROUP BY i.name";
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
+
+	}
+
+	/*
+	 * private ResultSet getVersionDescriptor(String context) throws
+	 * SQLException { String aSql = null; aSql = "SELECT DISTINCT version,
+	 * authentication_yn FROM interaction_dataset, dataset where dataset.name='" +
+	 * context + "' AND interaction_dataset.dataset_id = dataset.id;"; statement =
+	 * conn.prepareStatement(aSql); ResultSet rs = statement.executeQuery();
+	 * return rs; }
+	 */
+
+	private ResultSet getVersionDescriptor(String context) throws SQLException {
+		String aSql = null;
+
+		aSql = "SELECT DISTINCT v.version, v.authentication_yn, v.description ";
+		aSql += "FROM interactome_version v, interactome i, interaction_interactome_version iv ";
+		aSql += "WHERE v.interactome_id=i.id ";
+		aSql += " AND v.id=iv.interactome_version_id ";
+		aSql += " AND i.name='" + context + "'";
+
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
+	}
+
+	/*
+	 * private String getAuthentication(String context, String version) throws
+	 * SQLException { Statement statement = conn.createStatement(); String value =
+	 * "N"; String sql = "SELECT * FROM dataset where name='" + context + "'";
+	 * if (version != null && !version.equals("")) sql = sql + " AND version='" +
+	 * version + "'"; ResultSet rs = statement.executeQuery(sql); while
+	 * (rs.next()) {
+	 *  // Get the data from the row using the column name value =
+	 * rs.getString("authentication_yn"); break; } statement.close(); return
+	 * value; }
+	 */
+
+	private String getAuthentication(String context, String version)
+			throws SQLException {
 		Statement statement = conn.createStatement();
 		String value = "N";
-		String sql = "SELECT * FROM dataset where name='" + context + "'";
+		String aSql = null;
+		aSql = "SELECT v.authentication_yn ";
+		aSql += "FROM interactome_version v, interactome i ";
+		aSql += "WHERE v.interactome_id=i.id ";
+		aSql += "AND i.name='" + context + "'";
+
 		if (version != null && !version.equals(""))
-			sql = sql + " AND version='" + version + "'";
-		ResultSet rs = statement.executeQuery(sql);
+			aSql = aSql + " AND v.version='" + version + "'";
+		ResultSet rs = statement.executeQuery(aSql);
 		while (rs.next()) {
 
 			// Get the data from the row using the column name
@@ -378,7 +463,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 		return value;
 	}
 
-	private int getDatasetId(Connection conn, String context, String version)
+	/*private int getDatasetId(Connection conn, String context, String version)
 			throws SQLException {
 		Statement statement = conn.createStatement();
 		int id = 0;
@@ -394,6 +479,240 @@ public class InteractionsConnectionImplServlet extends HttpServlet  implements S
 		}
 		statement.close();
 		return id;
+	} */
+
+	private int getInteractomeVersionId(String context, String version)
+			throws SQLException {
+		
+		int id = 0;
+		String aSql = null;
+		aSql = "SELECT v.id ";
+		aSql += "FROM interactome_version v, interactome i ";
+		aSql += "WHERE v.interactome_id=i.id ";
+		aSql += "AND i.name='" + context + "' ";
+		aSql += "AND v.version='" + version + "'";
+		Statement statement = conn.createStatement();
+		
+		ResultSet rs = statement.executeQuery(aSql);
+		while (rs.next()) {
+
+			// Get the data from the row using the column name
+			id = rs.getInt("id");
+			break;
+		}
+		statement.close();
+		return id;
+	}
+	
+	private String getGeneDataByEntrezId(String geneId) throws SQLException {
+	 
+		String aSql = null;
+		String str = "";		 
+		 
+		aSql =  "SELECT pe.primary_accession, ds.name, pe.gene_symbol FROM physical_entity pe, db_source ds ";         
+		aSql +=  "WHERE pe.primary_accession =? ";
+		aSql +=  "AND pe.accession_db=ds.id";
+        
+        statement = conn.prepareStatement(aSql);
+		statement.setString(1,  geneId);	 
+		ResultSet rs = statement.executeQuery();
+		
+		while (rs.next()) { 
+			 
+		    str  = rs.getString("primary_accession") + DEL;
+			str += rs.getString("name") + DEL;
+			str += rs.getString("gene_symbol");
+			break;
+			 
+		}	
+		
+		statement.close();
+		
+		return str;
+	}
+	
+	private String getInteractionIdsByEntrezId(String geneId, String context,
+			String version) throws SQLException {
+	 
+		String aSql = null;
+		String str = "";
+		int interactomeVersionId = getInteractomeVersionId(context, version);
+		 
+		aSql =  "SELECT i.id ";
+        aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
+		aSql +=  "WHERE ip. participant_id = pe.id ";
+        aSql +=  "AND ip.interaction_id = i.id ";
+        aSql +=  "AND i.id = iiv.interaction_id ";
+        aSql +=  "AND iiv.interactome_version_id =? ";
+        aSql +=  "AND pe.primary_accession = ?";	 
+        
+        statement = conn.prepareStatement(aSql);
+		statement.setInt(1, interactomeVersionId);
+		statement.setString(2, geneId);		 
+		ResultSet rs = statement.executeQuery();
+		
+		while (rs.next()) { 
+			if (!str.trim().equals(""))
+				str += ", ";
+			str += rs.getString("id");
+			 
+		}	
+		
+		statement.close();
+		
+		return str;
+        
+	}
+	
+	private String getInteractionIdsByGeneSymbol(String geneSymbol, String context,
+			String version) throws SQLException {
+	 
+		String aSql = null;
+		String str = "";
+		int interactomeVersionId = getInteractomeVersionId(context, version);
+		 
+		aSql =  "SELECT i.id ";
+        aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
+		aSql +=  "WHERE ip. participant_id = pe.id ";
+        aSql +=  "AND ip.interaction_id = i.id ";
+        aSql +=  "AND i.id = iiv.interaction_id ";
+        aSql +=  "AND iiv.interactome_version_id =? ";
+        aSql +=  "AND pe.gene_symbol = ?";	 
+        
+        statement = conn.prepareStatement(aSql);
+		statement.setInt(1, interactomeVersionId);
+		statement.setString(2, geneSymbol);		 
+		ResultSet rs = statement.executeQuery();
+		
+		while (rs.next()) { 
+			if (!str.trim().equals(""))
+				str += ", ";
+			str += rs.getString("id");
+			 
+		}	
+		
+		statement.close();
+		
+		return str;
+        
+	}
+	
+	
+	private String getInteractionIdsByEntrezIdOrGeneSymbol(String EntrezId, String geneSymbol, String context,
+			String version) throws SQLException {
+	 
+		String aSql = null;
+		String str = "";
+		int interactomeVersionId = getInteractomeVersionId(context, version);
+		 
+		aSql =  "SELECT i.id ";
+        aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
+		aSql +=  "WHERE ip. participant_id = pe.id ";
+        aSql +=  "AND ip.interaction_id = i.id ";
+        aSql +=  "AND i.id = iiv.interaction_id ";
+        aSql +=  "AND iiv.interactome_version_id =? ";
+        aSql +=  "AND (pe.primary_accession = ? OR pe.gene_symbol = ?";	 
+        
+        statement = conn.prepareStatement(aSql);
+		statement.setInt(1, interactomeVersionId);
+		statement.setString(2, EntrezId);		
+		statement.setString(3, geneSymbol);		 
+		ResultSet rs = statement.executeQuery();
+		
+		while (rs.next()) { 
+			if (!str.trim().equals(""))
+				str += ", ";
+			str += rs.getString("id");
+			 
+		}	
+		
+		statement.close();
+		
+		return str;
+        
+	}	
+	
+	public ResultSet getInteractomeNames() throws SQLException {
+		String aSql = null;
+		aSql = "SELECT i.name, i.description ";
+		aSql += "FROM interactome i, interactome_version v, interaction_interactome_version iv ";
+		aSql += "WHERE i.id=v.interactome_id ";
+		aSql += "AND v.id=iv.interactome_version_id ";
+		aSql += "GROUP BY i.name";
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
 	}
 
+	private ResultSet getInteractionTypes(PreparedStatement statement, String context, String version)
+			throws SQLException {
+		String aSql = null;
+		int versionId = getInteractomeVersionId(context, version);
+		aSql = "SELECT DISTINCT t.name FROM interaction_type t, interaction i, interaction_interactome_version iv ";
+		aSql += "WHERE iv.interaction_id = i.id ";
+		aSql += "AND i.interaction_type = t.id ";
+		aSql += "AND iv.interactome_version_id = " + versionId;
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
+	}
+
+	private ResultSet getInteractionsByEntrezId(String geneId, String context,
+			String version) throws SQLException {
+		String aSql = null;		
+		
+		String interactionIdList = getInteractionIdsByEntrezId(geneId, context, version);
+				 
+		aSql = getInteractionSqlbyIdList(interactionIdList, context, version);
+		statement = conn.prepareStatement(aSql);			 
+		ResultSet rs = statement.executeQuery();
+		 
+		return rs;
+	}
+	
+	private ResultSet getInteractionsByGeneSymbol(String geneSymbol, String context,
+			String version) throws SQLException {
+		String aSql = null;		
+		
+		String interactionIdList = getInteractionIdsByGeneSymbol(geneSymbol, context, version);
+				 
+		aSql = getInteractionSqlbyIdList(interactionIdList, context, version);
+		statement = conn.prepareStatement(aSql);			 
+		ResultSet rs = statement.executeQuery();
+		 
+		return rs;
+	}
+	
+	private ResultSet getInteractionsByEntrezIdOrGeneSymbol(String entrezId, String geneSymbol, String context,
+			String version) throws SQLException {
+		String aSql = null;		
+		
+		String interactionIdList = this.getInteractionIdsByEntrezIdOrGeneSymbol(entrezId, geneSymbol, context, version);
+				 
+		aSql = getInteractionSqlbyIdList(interactionIdList, context, version);
+		statement = conn.prepareStatement(aSql);			 
+		ResultSet rs = statement.executeQuery();
+		 
+		return rs;
+	}
+	
+	private String getInteractionSqlbyIdList(String interactionIdList, String context,
+			String version)  {
+		String aSql = null;	
+		 
+		if (interactionIdList.equals(""))
+			interactionIdList="0";
+		aSql =  "SELECT pe.primary_accession as ms_id2, ds.name as db2_xref, pe.gene_symbol as gene2, i.id as interaction_id,i.confidence_value as confidence_value, it.name as interaction_type ";
+		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds ";
+		aSql += "WHERE pe.id=ip.participant_id ";
+		aSql += "AND pe.accession_db=ds.id ";
+		aSql += "AND ip.interaction_id=i.id ";
+		aSql += "AND i.interaction_type=it.id ";	 
+		aSql += "AND i.id in (" + interactionIdList + ")";	
+		              
+	 
+		return aSql;
+	}
+
+	
 }
