@@ -8,7 +8,7 @@
 
 	<property name="classdir" location="${basedir}/build/classes" />
 	<property name="eclipse_classdir" location="${basedir}/classes" />
-	<property name="ServerWebDir" value="C:\pkgs\apache-tomcat-5.5.27\webapps\" />
+	<property name="ServerWebDir" value="C:\apache-tomcat-5.5.27\webapps\" />
 	<property name="buildDir" value="${basedir}/build" />
 	<property name="warDir" value="${buildDir}/war" />
 
@@ -51,11 +51,11 @@
 		</copy>
 -->
 		<copy todir="${warDir}/WEB-INF">
-			<fileset dir="${web}" includes="web.xml" />
+			<fileset dir="${web}/WEB-INF" includes="web.xml" />
 		</copy>
 
 		<copy todir="${warDir}/WEB-INF/classes">
-			<fileset dir="${conf}" includes="log4j.properties," />
+			<fileset dir="${conf}" includes="*.properties," />
 		</copy>
 
 		<copy todir="${warDir}/WEB-INF/lib">
@@ -76,7 +76,7 @@
 
 	<target name="deployLocalFilesExpandedWar" depends="cleanServerWar">
 		<!-- just copy all files  -->
-		<copy todir="${ServerWebDir}/InteractionsServlet/WEB-INF">
+		<copy todir="${ServerWebDir}/InteractionsServlet">
 			<fileset dir="${warDir}" />
 		</copy>
 	</target>
