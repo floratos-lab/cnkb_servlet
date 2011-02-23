@@ -53,9 +53,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String GET_VERSION_DESCRIPTOR = "getVersionDescriptor";
 	private static final String GET_INTERACTION_TYPES_BY_INTERACTOMEVERSION = "getInteractionTypesByInteractomeVersion";
 	private static final String GET_INTERACTIONS_SIF_FORMAT = "getInteractionsSifFormat";
-
-	private static final String TRANSCRIPTION_FACTOR = "transcription factor";
-
 	private static final String CLOSE_DB_CONNECTION = "closeDbConnection";
 
 	public static final String GENE_NAME = "gene name";
@@ -734,41 +731,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 	}
 
-	private String getInteractionIdsByEntrezIdOrGeneSymbol(String EntrezId,
-			String geneSymbol, String context, String version, PreparedStatement statement)
-			throws SQLException {
-
-		String aSql = null;
-		String str = "";
-		int interactomeVersionId = getInteractomeVersionId(context, version, conn, statement);
-
-		aSql = "SELECT i.id ";
-		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version iiv ";
-		aSql += "WHERE ip. participant_id = pe.id ";
-		aSql += "AND ip.interaction_id = i.id ";
-		aSql += "AND i.id = iiv.interaction_id ";
-		aSql += "AND iiv.interactome_version_id =? ";
-		aSql += "AND (pe.primary_accession = ? OR pe.gene_symbol = ?)";
-
-		statement = conn.prepareStatement(aSql);
-		statement.setInt(1, interactomeVersionId);
-		statement.setString(2, EntrezId);
-		statement.setString(3, geneSymbol);
-		ResultSet rs = statement.executeQuery();
-
-		while (rs.next()) {
-			if (!str.trim().equals(""))
-				str += ", ";
-			str += rs.getString("id");
-
-		}
-
-		statement.close();
-
-		return str;
-
-	}
-
+ 
 	public ResultSet getInteractomeNames(PreparedStatement statement) throws SQLException {
 		String aSql = null;
 		aSql = "SELECT i.name, COUNT(i.name) as interaction_count ";
