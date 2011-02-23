@@ -54,6 +54,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String GET_INTERACTION_TYPES_BY_INTERACTOMEVERSION = "getInteractionTypesByInteractomeVersion";
 	private static final String GET_INTERACTIONS_SIF_FORMAT = "getInteractionsSifFormat";
 	private static final String CLOSE_DB_CONNECTION = "closeDbConnection";
+	
+	private static final String TARGET = "target";
+	private static final String MODULATOR = "modulator";
 
 	public static final String GENE_NAME = "gene name";
 	public static final String GENE_ID = "gene id";
@@ -804,7 +807,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		
 
-		List<String> tfList = getAllInteractionTFGenes(versionId,
+		List<String> tfList = getRelatedInteractionGenes(versionId,
 				interactionType, columnName, exportConn);
 		
 		out.println("sif format data");
@@ -842,14 +845,14 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
             rs1.close();
 			prepStat.close();
 			
-			aSql = "SELECT pe." + columnName + ", it.short_name ";
-			aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it ";
+			aSql = "SELECT pe." + columnName + ", it.short_name, r.name ";
+			aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
 			aSql += "WHERE i.id in (" + idList + ") "; 			 
 			aSql += "AND pe." + columnName + " <> ? ";
 			aSql += "AND pe.id=ip.participant_id ";
 			aSql += "AND ip.interaction_id=i.id ";
-			aSql += "AND i.interaction_type=it.id ";			 
-			
+			aSql += "AND i.interaction_type=it.id ";
+			aSql += "AND ip.role_id = r.id ";
 			aSql += "order by it.short_name, pe.gene_symbol";
 
 			prepStat = exportConn.prepareStatement(aSql);
@@ -862,13 +865,18 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			String targetGene = null;
 			String shortName = null;
 			String previousShortName = null;
+			String roleName= null;	
+			boolean hasData = false;
 			
 			while (rs2.next()) {
 				targetGene = rs2.getString(columnName);
 				shortName = rs2.getString("short_name");
-				if (targetGene.equalsIgnoreCase(tfGene))
+				roleName = rs2.getString("name");
+			 
+				if (roleName.equals(MODULATOR))
 					continue;
-				if (previousShortName == null) {				 
+				if (previousShortName == null) {	
+					hasData = true;
 					out.print(tfGene + " " + shortName + " " + targetGene);
 				} else if (previousShortName.equalsIgnoreCase(shortName)) {
 					out.print(" " + targetGene);
@@ -879,7 +887,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				}
 				previousShortName = shortName;
 			}
-            out.println();
+			if (hasData)
+                out.println();
 			rs2.close();
 			prepStat.close();
 		 
@@ -889,17 +898,17 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		logger.info("End exporting....");
 	}
 
-	private List<String> getAllInteractionTFGenes(int versionId,
+	private List<String> getRelatedInteractionGenes(int versionId,
 			String interactionType, String presentBy, Connection exportConn ) throws SQLException {
 		String aSql = null;
 		List<String> tfList = new ArrayList<String>();
 		aSql = "SELECT pe." + presentBy + ", + it.short_name ";
-		aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it ";
+		aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
 		aSql += "WHERE pe.id=ip.participant_id ";
 		aSql += "AND ip.interaction_id=i.id ";
 		aSql += "AND i.id = iiv.interaction_id ";
-		//aSql += "AND r.name = '" + TRANSCRIPTION_FACTOR + "' ";
-		//aSql += "AND ip.role_id = r.id ";
+		aSql += "AND r.name <> '" + TARGET + "' ";
+		aSql += "AND ip.role_id = r.id ";
 		aSql += "And iiv.interactome_version_id = " + versionId + " ";
 		if (!interactionType.equalsIgnoreCase("ALL")) {
 			aSql += "AND it.id = i.interaction_type ";
