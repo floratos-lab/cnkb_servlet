@@ -53,6 +53,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String GET_VERSION_DESCRIPTOR = "getVersionDescriptor";
 	private static final String GET_INTERACTION_TYPES_BY_INTERACTOMEVERSION = "getInteractionTypesByInteractomeVersion";
 	private static final String GET_INTERACTIONS_SIF_FORMAT = "getInteractionsSifFormat";
+	private static final String GET_INTERACTIONS_ADJ_FORMAT = "getInteractionsAdjFormat";
 	private static final String CLOSE_DB_CONNECTION = "closeDbConnection";
 	
 	private static final String TARGET = "target";
@@ -225,7 +226,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					rs = this.getInteractionsByGeneSymbol(geneSymbol, context,
 							version, statement);
 				} else if (methodName
-						.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT)) {
+						.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT) || methodName
+						.equalsIgnoreCase(GET_INTERACTIONS_ADJ_FORMAT)) {
 					String interactionTypes = "ALL";
 					String nodePresentedBy = "GENE_NAME";
 					String context = tokens[1].trim();
@@ -234,8 +236,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 						interactionTypes = tokens[3].trim();
 						nodePresentedBy = tokens[4].trim();
 					}
-					getInteractionsSifFormat(context, version,
+					if (methodName
+						.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT))
+					    getInteractionsSifFormat(context, version,
 							interactionTypes, nodePresentedBy, out);
+					else
+					    getInteractionsAdjFormat(context, version,
+									interactionTypes, nodePresentedBy, out);
 				} else if (methodName.equalsIgnoreCase(GET_INTERACTION_TYPES)) {
 					rs = this.getInteractionTypes(statement);
 				} else if (methodName
@@ -258,7 +265,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				}
 				
 
-				if (!methodName.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT)) {
+				if (!methodName.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT) && !methodName.equalsIgnoreCase(GET_INTERACTIONS_ADJ_FORMAT)) {
 					String metaData = new String();
 
 					String gene1Data = "";
@@ -326,7 +333,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			try {
 				resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
 				resp.getWriter().print(e.getMessage());
-				resp.getWriter().close();
+				resp.getWriter().close();				 
 				logger.error("get IOException: ", e);
 				isSqlException = true;
 			} catch (IOException ioe) {
@@ -360,25 +367,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 								"exception in catch block: doPost(HttpServletRequest, HttpServletResponse)", ioe); //$NON-NLS-1$
 			}
 
-		} finally {
-			if ((!methodName.equalsIgnoreCase(GET_PAIRWISE_INTERACTION)
-					&& !methodName
-							.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID_OR_GENESYMBOL)
-					&& !methodName
-							.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID) && !methodName
-					.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL))
-					|| isSqlException == true) {
-				try {
-					if (conn != null)
-						conn.close();
-					conn = null;
-				} catch (SQLException e) {
-				}
-
-			}
-
-		}
-
+		} 
 	}
 
 	private void askForPassword(HttpServletResponse resp) {
@@ -397,7 +386,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 						.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID_OR_GENESYMBOL)
 				&& !methodName.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID)
 				&& !methodName.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL)
-				&& !methodName.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT))
+				&& !methodName.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT)
+				&& !methodName.equalsIgnoreCase(GET_INTERACTIONS_ADJ_FORMAT))
 			return false;
 		else {
 			String context = null;
@@ -408,7 +398,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				version = tokens[4];
 			
 			}else if (methodName
-					.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT)) {
+					.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT) || methodName
+					.equalsIgnoreCase(GET_INTERACTIONS_ADJ_FORMAT)) {
 				context = tokens[1];
 				version = tokens[2];
 			
@@ -897,6 +888,121 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		exportConn.close();
 		logger.info("End exporting....");
 	}
+	
+	
+	private void getInteractionsAdjFormat(String context, String version,
+			String interactionType, String presentBy, PrintWriter out)
+			throws SQLException {
+		
+		logger.info("Start exporting....");
+		String aSql = null;
+		Connection exportConn = DriverManager.getConnection(mysql_url, mysql_user,
+				mysql_passwd);
+		PreparedStatement prepStat = null;
+		int versionId = getInteractomeVersionId(context, version, exportConn, prepStat);
+		String columnName = null;
+		if (presentBy.equalsIgnoreCase(GENE_ID))
+			columnName = "primary_accession";
+		else
+			columnName = "gene_symbol";
+
+		
+
+		List<String> tfList = getRelatedInteractionGenes(versionId,
+				interactionType, columnName, exportConn);
+		
+		out.println("adj format data");
+	 
+		for (String tfGene : tfList) {
+			logger.debug("Start get ...." +  tfGene);
+			if (tfGene == null || tfGene.trim().equals("") || tfGene.equalsIgnoreCase("UNKNOWN"))
+			{
+				logger.info("drop gene ...." +  tfGene);
+				continue;
+			}
+			aSql = "SELECT i.id ";
+			aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it ";
+			aSql += "WHERE pe." + columnName + " = ? "; 
+			aSql += "AND iiv.interactome_version_id = ? ";
+			if (!interactionType.equalsIgnoreCase("ALL")) {
+				aSql += "and it.name ='" + interactionType + "' ";
+				aSql += "AND it.id = i.interaction_type ";			}	
+			aSql += "AND ip.interaction_id=i.id ";
+			aSql += "AND i.id = iiv.interaction_id ";		 
+			aSql += "AND pe.id=ip.participant_id  ";
+			
+			prepStat = exportConn.prepareStatement(aSql);
+			prepStat.setString(1, tfGene);
+			prepStat.setInt(2, versionId);
+			 
+			ResultSet rs1 = prepStat.executeQuery();
+            String idList = "";
+			while (rs1.next()) {
+				if (!idList.trim().equals(""))
+					idList += ", ";
+				idList += rs1.getString("id");
+
+			}
+            rs1.close();
+			prepStat.close();
+			
+			aSql = "SELECT pe." + columnName + ", it.short_name, r.name ";
+			aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
+			aSql += "WHERE i.id in (" + idList + ") "; 			 
+			aSql += "AND pe." + columnName + " <> ? ";
+			aSql += "AND pe.id=ip.participant_id ";
+			aSql += "AND ip.interaction_id=i.id ";
+			aSql += "AND i.interaction_type=it.id ";
+			aSql += "AND ip.role_id = r.id ";
+			aSql += "order by it.short_name, pe.gene_symbol";
+
+			prepStat = exportConn.prepareStatement(aSql);
+			prepStat.setString(1, tfGene);
+			 
+			
+		 
+			ResultSet rs2 = prepStat.executeQuery();
+		 
+			String targetGene = null;
+			Double confidence = null;
+			String shortName = null;
+			String previousShortName = null;
+			String roleName= null;	
+			boolean hasData = false;
+			
+			while (rs2.next()) {
+				targetGene = rs2.getString(columnName);
+				confidence = 0.8;
+				shortName = rs2.getString("short_name");
+				roleName = rs2.getString("name");
+			 
+				 
+				if (roleName.equals(MODULATOR))
+					continue;
+				if (previousShortName == null) {	
+					hasData = true;
+					out.print(tfGene + " " + targetGene + " " + confidence);
+				} else if (previousShortName.equalsIgnoreCase(shortName)) {
+					out.print(" " + targetGene + " " + confidence);
+				} else {
+					out.println();
+					out.print(tfGene + " " + targetGene + " " + confidence);
+
+				}
+				previousShortName = shortName;
+			}
+			if (hasData)
+                out.println();
+			rs2.close();
+			prepStat.close();
+		 
+		}
+		
+		exportConn.close();
+		logger.info("End exporting....");
+	}
+
+	
 
 	private List<String> getRelatedInteractionGenes(int versionId,
 			String interactionType, String presentBy, Connection exportConn ) throws SQLException {
