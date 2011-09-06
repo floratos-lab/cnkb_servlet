@@ -125,6 +125,10 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			dataSource.setJdbcUrl(mysql_url);
 			dataSource.setUser(mysql_user);
 			dataSource.setPassword(mysql_passwd);
+			dataSource.setAcquireRetryAttempts(10);
+			dataSource.setAcquireIncrement(3);		 
+			dataSource.setIdleConnectionTestPeriod(100);
+			
 
 		} catch (IOException ie) {
 			logger
@@ -148,7 +152,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		Connection conn = null;
 
 		try {
-
+           
 			PrintWriter out = resp.getWriter();
 			PreparedStatement statement = null;
 
