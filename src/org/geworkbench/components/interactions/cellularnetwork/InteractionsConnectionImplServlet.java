@@ -64,6 +64,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	public static final String GENE_NAME = "gene name";
 	public static final String GENE_ID = "gene id";
 
+	public static final String SECONDARY_ACCESSION = "secondary_accession";
+
 	/**
 	 * Logger for this class
 	 */
@@ -91,7 +93,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static String mysql_url;
 	private static String dataset_passwd;
 	private static String dataset_user;
-	private ComboPooledDataSource dataSource; 
+	private ComboPooledDataSource dataSource;
 
 	@Override
 	public void init() throws ServletException {
@@ -120,15 +122,14 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			try {
 				dataSource.setDriverClass(mysql_jdbc_driver);
 			} catch (PropertyVetoException pve) {
-                logger.error(pve.getMessage());
+				logger.error(pve.getMessage());
 			}
 			dataSource.setJdbcUrl(mysql_url);
 			dataSource.setUser(mysql_user);
 			dataSource.setPassword(mysql_passwd);
 			dataSource.setAcquireRetryAttempts(10);
-			dataSource.setAcquireIncrement(3);		 
+			dataSource.setAcquireIncrement(3);
 			dataSource.setIdleConnectionTestPeriod(100);
-			
 
 		} catch (IOException ie) {
 			logger
@@ -152,7 +153,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		Connection conn = null;
 
 		try {
-           
+
 			PrintWriter out = resp.getWriter();
 			PreparedStatement statement = null;
 
@@ -290,8 +291,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 						gene1Data = getGeneDataByEntrezId(geneId, conn,
 								statement);
 					}
-
+					boolean hasSecondary = false;
 					for (int i = 1; i <= numberOfColumns; i++) {
+						if (rsmd.getColumnName(i).trim().equalsIgnoreCase(
+								SECONDARY_ACCESSION)) {
+							hasSecondary = true;
+							continue;
+						}
 						if (i > 1) {
 							metaData += DEL;
 						}
@@ -316,12 +322,35 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					} else {
 						while (rs.next()) {
 							String row = new String();
+							if (hasSecondary) {
+								if (rs.getString(1) == null
+										|| rs.getString(1).trim()
+												.equals("null")
+										|| rs.getString(1).trim().equals("")) {
+									for (int i = 2; i <= numberOfColumns; i++) {
+										if (i > 2) {
+											row += DEL;
+										}
+										row += rs.getString(i);
+									}
 
-							for (int i = 1; i <= numberOfColumns; i++) {
-								if (i > 1) {
-									row += DEL;
+								} else {
+									for (int i = 1; i <= numberOfColumns; i++) {
+										if (i == 2)
+											continue;
+										if (i > 1) {
+											row += DEL;
+										}
+										row += rs.getString(i);
+									}
 								}
-								row += rs.getString(i);
+							} else {
+								for (int i = 1; i <= numberOfColumns; i++) {
+									if (i > 1) {
+										row += DEL;
+									}
+									row += rs.getString(i);
+								}
 							}
 							out.println(row.trim());
 						}
@@ -370,7 +399,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
 				resp.getWriter().print(e.getMessage());
 				resp.getWriter().close();
-				logger.error("get mother of all exceptions: ", e);
+				logger.error("get exceptions: ", e);
 			} catch (IOException ioe) {
 				logger
 						.error(
@@ -624,7 +653,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		aSql += "AND pe.accession_db=ds.id";
 
 		statement = conn.prepareStatement(aSql);
-		statement.setString(1, geneId);
+		statement.setInt(1, new Integer(geneId));
 		ResultSet rs = statement.executeQuery();
 
 		while (rs.next()) {
@@ -663,7 +692,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		statement = conn.prepareStatement(aSql);
 		statement.setInt(1, interactomeVersionId);
-		statement.setString(2, geneId);
+		statement.setInt(2, new Integer(geneId));
 		ResultSet rs = statement.executeQuery();
 
 		while (rs.next()) {
@@ -818,28 +847,37 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		String aSql = null;
 		PreparedStatement prepStat = null;
 		int versionId = getInteractomeVersionId(context, version, conn,
-				prepStat);
-		String columnName = null;
+				prepStat);	
+		
+		boolean presentByGeneId = false;
 		if (presentBy.equalsIgnoreCase(GENE_ID))
-			columnName = "primary_accession";
-		else
-			columnName = "gene_symbol";
-
-		List<String> tfList = getRelatedInteractionGenes(versionId,
-				interactionType, columnName, conn);
+			presentByGeneId = true;
+	
+		// the
+		List<GeneInfo> tfList = getRelatedInteractionGenes(versionId,
+				interactionType, presentByGeneId, conn);
 
 		out.println("sif format data");
 
-		for (String tfGene : tfList) {
-			logger.debug("Start get ...." + tfGene);
-			if (tfGene == null || tfGene.trim().equals("")
-					|| tfGene.equalsIgnoreCase("UNKNOWN")) {
+		for (GeneInfo tfGene : tfList) {
+			logger.debug("Start get ...." + tfGene.gene);
+			if (tfGene.gene == null || tfGene.gene.trim().equals("")
+					|| tfGene.gene.equalsIgnoreCase("UNKNOWN")) {
 				logger.info("drop gene ...." + tfGene);
 				continue;
 			}
+			
+			String colName = null;
+			if (tfGene.isPrimary == null)
+				colName = "gene_symbol";
+			else if (tfGene.isPrimary.booleanValue() == true)
+				colName = "primary_accession";					 
+			else
+				colName = "secondary_accession";
+			
 			aSql = "SELECT i.id ";
-			aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it ";
-			aSql += "WHERE pe." + columnName + " = ? ";
+			aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it ";		 
+			aSql += "WHERE pe." + colName + " = ? ";			 
 			aSql += "AND iiv.interactome_version_id = ? ";
 			if (!interactionType.equalsIgnoreCase("ALL")) {
 				aSql += "and it.name ='" + interactionType + "' ";
@@ -847,11 +885,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			}
 			aSql += "AND ip.interaction_id=i.id ";
 			aSql += "AND i.id = iiv.interaction_id ";
-			aSql += "AND pe.id=ip.participant_id  ";
-
+			aSql += "AND pe.id=ip.participant_id  ";			 
+			
 			prepStat = conn.prepareStatement(aSql);
-			prepStat.setString(1, tfGene);
-			prepStat.setInt(2, versionId);
+		    prepStat.setString(1, tfGene.gene);						
+			prepStat.setInt(2, versionId); 
 
 			ResultSet rs1 = prepStat.executeQuery();
 			String idList = "";
@@ -864,10 +902,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			rs1.close();
 			prepStat.close();
 
-			aSql = "SELECT pe." + columnName + ", it.short_name, r.name ";
+			 
+			aSql = "SELECT pe." + colName + ", it.short_name, r.name ";
 			aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
 			aSql += "WHERE i.id in (" + idList + ") ";
-			aSql += "AND pe." + columnName + " <> ? ";
+			aSql += "AND pe." + colName + " <> ? ";
 			aSql += "AND pe.id=ip.participant_id ";
 			aSql += "AND ip.interaction_id=i.id ";
 			aSql += "AND i.interaction_type=it.id ";
@@ -875,7 +914,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			aSql += "order by it.short_name, pe.gene_symbol";
 
 			prepStat = conn.prepareStatement(aSql);
-			prepStat.setString(1, tfGene);
+			prepStat.setString(1, tfGene.gene);
 
 			ResultSet rs2 = prepStat.executeQuery();
 
@@ -886,7 +925,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			boolean hasData = false;
 
 			while (rs2.next()) {
-				targetGene = rs2.getString(columnName);
+				 
+				targetGene = rs2.getString(colName);
 				shortName = rs2.getString("short_name");
 				roleName = rs2.getString("name");
 
@@ -894,12 +934,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					continue;
 				if (previousShortName == null) {
 					hasData = true;
-					out.print(tfGene + " " + shortName + " " + targetGene);
+					out.print(tfGene.gene + " " + shortName + " " + targetGene);
 				} else if (previousShortName.equalsIgnoreCase(shortName)) {
 					out.print(" " + targetGene);
 				} else {
 					out.println();
-					out.print(tfGene + " " + shortName + " " + targetGene);
+					out.print(tfGene.gene + " " + shortName + " " + targetGene);
 
 				}
 				previousShortName = shortName;
@@ -925,27 +965,35 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		PreparedStatement prepStat = null;
 		int versionId = getInteractomeVersionId(context, version, conn,
 				prepStat);
-		String columnName = null;
-		if (presentBy.equalsIgnoreCase(GENE_ID))
-			columnName = "primary_accession";
-		else
-			columnName = "gene_symbol";
 
-		List<String> tfList = getRelatedInteractionGenes(versionId,
-				interactionType, columnName, conn);
+		boolean presentByGeneId = false;
+		if (presentBy.equalsIgnoreCase(GENE_ID))
+			presentByGeneId = true;
+
+		List<GeneInfo> tfList = getRelatedInteractionGenes(versionId,
+				interactionType, presentByGeneId, conn);
 
 		out.println("adj format data");
 
-		for (String tfGene : tfList) {
+		for (GeneInfo tfGene : tfList) {
 			logger.debug("Start get ...." + tfGene);
-			if (tfGene == null || tfGene.trim().equals("")
-					|| tfGene.equalsIgnoreCase("UNKNOWN")) {
+			if (tfGene == null || tfGene.gene.trim().equals("")
+					|| tfGene.gene.equalsIgnoreCase("UNKNOWN")) {
 				logger.info("drop gene ...." + tfGene);
 				continue;
 			}
+			
+			String colName = null;
+			if (tfGene.isPrimary == null)
+				colName = "gene_symbol";
+			else if (tfGene.isPrimary.booleanValue() == true)
+				colName = "primary_accession";					 
+			else
+				colName = "secondary_accession";
+			
 			aSql = "SELECT i.id ";
 			aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it ";
-			aSql += "WHERE pe." + columnName + " = ? ";
+			aSql += "WHERE pe." + colName + " = ? ";
 			aSql += "AND iiv.interactome_version_id = ? ";
 			if (!interactionType.equalsIgnoreCase("ALL")) {
 				aSql += "and it.name ='" + interactionType + "' ";
@@ -956,7 +1004,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			aSql += "AND pe.id=ip.participant_id  ";
 
 			prepStat = conn.prepareStatement(aSql);
-			prepStat.setString(1, tfGene);
+			prepStat.setString(1, tfGene.gene);
 			prepStat.setInt(2, versionId);
 
 			ResultSet rs1 = prepStat.executeQuery();
@@ -969,11 +1017,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			}
 			rs1.close();
 			prepStat.close();
-
-			aSql = "SELECT pe." + columnName + ", it.short_name, r.name ";
+			if (presentByGeneId)
+				aSql = "SELECT pe.primary_accession, pe.secondary_accession, it.short_name, r.name ";
+			else
+				aSql = "SELECT pe.gene_symbol, it.short_name, r.name ";
 			aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
 			aSql += "WHERE i.id in (" + idList + ") ";
-			aSql += "AND pe." + columnName + " <> ? ";
+			aSql += "AND pe." + colName + " <> ? ";
 			aSql += "AND pe.id=ip.participant_id ";
 			aSql += "AND ip.interaction_id=i.id ";
 			aSql += "AND i.interaction_type=it.id ";
@@ -981,7 +1031,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			aSql += "order by it.short_name, pe.gene_symbol";
 
 			prepStat = conn.prepareStatement(aSql);
-			prepStat.setString(1, tfGene);
+			prepStat.setString(1, tfGene.gene);
 
 			ResultSet rs2 = prepStat.executeQuery();
 
@@ -992,8 +1042,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			String roleName = null;
 			boolean hasData = false;
 
-			while (rs2.next()) {
-				targetGene = rs2.getString(columnName);
+			while (rs2.next()) {				
+				targetGene = rs2.getString(colName);
 				confidence = 0.8;
 				shortName = rs2.getString("short_name");
 				roleName = rs2.getString("name");
@@ -1002,12 +1052,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					continue;
 				if (previousShortName == null) {
 					hasData = true;
-					out.print(tfGene + " " + targetGene + " " + confidence);
+					out.print(tfGene.gene + " " + targetGene + " " + confidence);
 				} else if (previousShortName.equalsIgnoreCase(shortName)) {
 					out.print(" " + targetGene + " " + confidence);
 				} else {
 					out.println();
-					out.print(tfGene + " " + targetGene + " " + confidence);
+					out.print(tfGene.gene + " " + targetGene + " " + confidence);
 
 				}
 				previousShortName = shortName;
@@ -1022,12 +1072,16 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		logger.info("End exporting....");
 	}
 
-	private List<String> getRelatedInteractionGenes(int versionId,
-			String interactionType, String presentBy, Connection exportConn)
-			throws SQLException {
+	private List<GeneInfo> getRelatedInteractionGenes(int versionId,
+			String interactionType, boolean presentByGeneId,
+			Connection exportConn) throws SQLException {
 		String aSql = null;
-		List<String> tfList = new ArrayList<String>();
-		aSql = "SELECT pe." + presentBy + ", + it.short_name ";
+		List<GeneInfo> tfList = new ArrayList<GeneInfo>();
+
+		if (presentByGeneId)
+			aSql = "SELECT pe.primary_accession, pe.secondary_accession, it.short_name ";
+		else
+			aSql = "SELECT pe.gene_symbol, it.short_name ";
 		aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
 		aSql += "WHERE pe.id=ip.participant_id ";
 		aSql += "AND ip.interaction_id=i.id ";
@@ -1039,13 +1093,28 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			aSql += "AND it.id = i.interaction_type ";
 			aSql += "and it.name ='" + interactionType + "' ";
 		}
-		aSql += "group by pe.gene_symbol";
+		
+		if (presentByGeneId)
+		   aSql += "group by pe.primary_accession, pe.secondary_accession";
+		else			
+		   aSql += "group by pe.gene_symbol";
 
 		Statement stm = exportConn.createStatement();
 		ResultSet rs = stm.executeQuery(aSql);
 
-		while (rs.next()) {
-			tfList.add(rs.getString(presentBy));
+		if ((presentByGeneId)) {
+			while (rs.next())
+			{
+				String gene = rs.getString("primary_accession");
+				if (gene == null || gene.trim().equals("") || gene.trim().equals("null"))
+				  	tfList.add(new GeneInfo(rs.getString("secondary_accession"), false));
+				else
+					tfList.add(new GeneInfo(gene, true));
+			}
+
+		} else {
+			while (rs.next())
+				tfList.add(new GeneInfo(rs.getString("gene_symbol")));
 		}
 		stm.close();
 		rs.close();
@@ -1091,7 +1160,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		if (interactionIdList.equals(""))
 			interactionIdList = "0";
-		aSql = "SELECT pe.primary_accession as primary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,i.confidence_value as confidence_value, it.name as interaction_type ";
+		aSql = "SELECT pe.primary_accession as primary_accession, pe.secondary_accession as secondary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,i.confidence_value as confidence_value, it.name as interaction_type ";
 		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds ";
 		aSql += "WHERE pe.id=ip.participant_id ";
 		aSql += "AND pe.accession_db=ds.id ";
@@ -1101,6 +1170,24 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		aSql += "ORDER BY i.id";
 
 		return aSql;
+	}
+	
+	
+	private class GeneInfo {
+		String gene = null;
+		Boolean isPrimary = null;
+		
+		GeneInfo(String gene, Boolean isPrimary)
+		{
+			this.gene = gene;
+			this.isPrimary = isPrimary;
+		}
+		
+		GeneInfo(String gene)
+		{
+			this.gene = gene;
+			this.isPrimary = null;
+		}
 	}
 
 }
