@@ -934,12 +934,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					continue;
 				if (previousShortName == null) {
 					hasData = true;
-					out.print(tfGene.gene + " " + shortName + " " + targetGene);
+					out.print(tfGene.gene + "\t" + shortName + "\t" + targetGene);
 				} else if (previousShortName.equalsIgnoreCase(shortName)) {
-					out.print(" " + targetGene);
+					out.print("\t" + targetGene);
 				} else {
 					out.println();
-					out.print(tfGene.gene + " " + shortName + " " + targetGene);
+					out.print(tfGene.gene + "\t" + shortName + "\t" + targetGene);
 
 				}
 				previousShortName = shortName;
@@ -1052,12 +1052,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					continue;
 				if (previousShortName == null) {
 					hasData = true;
-					out.print(tfGene.gene + " " + targetGene + " " + confidence);
+					out.print(tfGene.gene + "\t" + targetGene + "\t" + confidence);
 				} else if (previousShortName.equalsIgnoreCase(shortName)) {
-					out.print(" " + targetGene + " " + confidence);
+					out.print("\t" + targetGene + "\t" + confidence);
 				} else {
 					out.println();
-					out.print(tfGene.gene + " " + targetGene + " " + confidence);
+					out.print(tfGene.gene + "\t" + targetGene + "\t" + confidence);
 
 				}
 				previousShortName = shortName;
