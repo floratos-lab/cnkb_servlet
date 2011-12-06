@@ -58,10 +58,10 @@ public class InteractionsExport {
 				logger.info("drop gene ...." + tfGene);
 				continue;
 			}
-			logger.info("Start get ...." + tfGene.gene);
+			logger.debug("Start get ...." + tfGene.gene);
 			String idList = getInteractionIds(tfGene, interactionType,
 					versionId, prepStat, conn);
-			//logger.info("test 1");
+			 
 			 
 			aSql = "SELECT pe.primary_accession, pe.secondary_accession, pe.gene_symbol, it.short_name, r.name ";			 
 			aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
@@ -81,8 +81,7 @@ public class InteractionsExport {
 			String previousShortName = null;
 			String roleName = null;
 			 
-			boolean hasData = false;
-			//logger.info("test 2");
+			boolean hasData = false;			 
 			while (rs2.next()) {		 
 				if (presentBy.equalsIgnoreCase(GeneSymbolOnly)) {
 					targetGene = rs2.getString("gene_symbol");
@@ -123,8 +122,7 @@ public class InteractionsExport {
 				}
 				previousShortName = shortName;
 			}
-			
-			//logger.info("test 3");
+			 
 			if (hasData)
 				out.println();
 			rs2.close();
@@ -227,311 +225,8 @@ public class InteractionsExport {
 		}
 
 		logger.info("End exporting....");
-	}
-
-	/*public void getInteractionsAdjFormat(int versionId, String interactionType,
-			String presentBy, PrintWriter out, Connection conn)
-			throws SQLException {
-
-		logger.info("Start exporting....");
-		String aSql = null;
-
-		PreparedStatement prepStat = null;
-
-		boolean presentByGeneId = false;
-		if (presentBy.equalsIgnoreCase(GENE_ID))
-			presentByGeneId = true;
-
-		List<GeneInfo> tfList = getRelatedInteractionGenes(versionId,
-				interactionType, presentBy, conn);
-
-		out.println("adj format data");
-
-		for (GeneInfo tfGene : tfList) {
-			logger.debug("Start get ...." + tfGene);
-			if (tfGene.gene == null || tfGene.gene.trim().equals("")
-					|| tfGene.gene.equalsIgnoreCase("UNKNOWN")) {
-				logger.info("drop gene ...." + tfGene);
-				continue;
-			}
-
-			String colName = null;
-			if (tfGene.isPrimary == null)
-				colName = "gene_symbol";
-			else if (tfGene.isPrimary.booleanValue() == true)
-				colName = "primary_accession";
-			else
-				colName = "secondary_accession";
-
-			aSql = "SELECT i.id ";
-			aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it ";
-			aSql += "WHERE pe." + colName + " = ? ";
-			aSql += "AND iiv.interactome_version_id = ? ";
-			if (!interactionType.equalsIgnoreCase("ALL")) {
-				aSql += "and it.name ='" + interactionType + "' ";
-				aSql += "AND it.id = i.interaction_type ";
-			}
-			aSql += "AND ip.interaction_id=i.id ";
-			aSql += "AND i.id = iiv.interaction_id ";
-			aSql += "AND pe.id=ip.participant_id  ";
-
-			prepStat = conn.prepareStatement(aSql);
-			prepStat.setString(1, tfGene.gene);
-			prepStat.setInt(2, versionId);
-
-			ResultSet rs1 = prepStat.executeQuery();
-			String idList = "";
-			while (rs1.next()) {
-				if (!idList.trim().equals(""))
-					idList += ", ";
-				idList += rs1.getString("id");
-
-			}
-			rs1.close();
-			prepStat.close();
-
-			if (presentByGeneId)
-				aSql = "SELECT pe.primary_accession, pe.secondary_accession, ds.name as dbName, it.short_name, r.name ";
-			else
-				aSql = "SELECT pe.gene_symbol, ds.name as dbName, it.short_name, r.name ";
-			aSql += "FROM physical_entity pe, db_source ds, interaction_participant ip, interaction i, interaction_type it, role r ";
-			aSql += "WHERE i.id in (" + idList + ") ";
-			aSql += "AND pe.id=ip.participant_id ";
-			aSql += "AND pe.accession_db=ds.id ";
-			aSql += "AND ip.interaction_id=i.id ";
-			aSql += "AND i.interaction_type=it.id ";
-			aSql += "AND ip.role_id = r.id ";
-			aSql += "order by it.short_name, pe.gene_symbol";
-
-			prepStat = conn.prepareStatement(aSql);
-			ResultSet rs2 = prepStat.executeQuery();
-
-			String targetGene = null;
-			Double confidence = null;
-			String shortName = null;
-			String previousShortName = null;
-			String roleName = null;
-			String dbName = null;
-			boolean hasData = false;
-
-			while (rs2.next()) {
-				dbName = rs2.getString("dbName");
-				if (!presentByGeneId)
-					targetGene = rs2.getString("gene_symbol");
-				else if (dbName.equalsIgnoreCase("Entrez Gene"))
-					targetGene = rs2.getString("primary_accession");
-				else
-					targetGene = rs2.getString("secondary_accession");
-
-				confidence = 0.8;
-				shortName = rs2.getString("short_name");
-				roleName = rs2.getString("name");
-
-				if (targetGene.equals(tfGene.gene)
-						|| roleName.equals(MODULATOR))
-					continue;
-				if (previousShortName == null) {
-					hasData = true;
-					out.print(tfGene.gene + "\t" + targetGene + "\t"
-							+ confidence);
-				} else if (previousShortName.equalsIgnoreCase(shortName)) {
-					out.print("\t" + targetGene + "\t" + confidence);
-				} else {
-					out.println();
-					out.print(tfGene.gene + "\t" + targetGene + "\t"
-							+ confidence);
-
-				}
-				previousShortName = shortName;
-			}
-			if (hasData)
-				out.println();
-			rs2.close();
-			prepStat.close();
-		}
-
-		logger.info("End exporting....");
-	}   */
-
-	/*public void getInteractionsSifFormat(int versionId, String interactionType,
-			String presentBy, PrintWriter out, Connection conn)
-			throws SQLException {
-
-		logger.info("Start exporting....");
-		String aSql = null;
-		PreparedStatement prepStat = null;
-
-		boolean presentByGeneId = false;
-		if (presentBy.equalsIgnoreCase(GENE_ID))
-			presentByGeneId = true;
-
-		// the
-		List<GeneInfo> tfList = getRelatedInteractionGenes(versionId,
-				interactionType, presentByGeneId, conn);
-
-		out.println("sif format data");
-
-		for (GeneInfo tfGene : tfList) {
-			logger.debug("Start get ...." + tfGene.gene);
-			if (tfGene.gene == null || tfGene.gene.trim().equals("")
-					|| tfGene.gene.equalsIgnoreCase("UNKNOWN")) {
-				logger.info("drop gene ...." + tfGene);
-				continue;
-			}
-
-			String colName = null;
-			if (tfGene.isPrimary == null)
-				colName = "gene_symbol";
-			else if (tfGene.isPrimary.booleanValue() == true)
-				colName = "primary_accession";
-			else
-				colName = "secondary_accession";
-
-			aSql = "SELECT i.id ";
-			aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it ";
-			aSql += "WHERE pe." + colName + " = ? ";
-			aSql += "AND iiv.interactome_version_id = ? ";
-			if (!interactionType.equalsIgnoreCase("ALL")) {
-				aSql += "and it.name ='" + interactionType + "' ";
-				aSql += "AND it.id = i.interaction_type ";
-			}
-			aSql += "AND ip.interaction_id=i.id ";
-			aSql += "AND i.id = iiv.interaction_id ";
-			aSql += "AND pe.id=ip.participant_id  ";
-
-			prepStat = conn.prepareStatement(aSql);
-			prepStat.setString(1, tfGene.gene);
-			prepStat.setInt(2, versionId);
-
-			ResultSet rs1 = prepStat.executeQuery();
-			String idList = "";
-			while (rs1.next()) {
-				if (!idList.trim().equals(""))
-					idList += ", ";
-				idList += rs1.getString("id");
-
-			}
-			rs1.close();
-			prepStat.close();
-
-			if (presentByGeneId)
-				aSql = "SELECT pe.primary_accession, pe.secondary_accession, ds.name as dbName, it.short_name, r.name ";
-			else
-				aSql = "SELECT pe.gene_symbol, ds.name as dbName, it.short_name, r.name ";
-			aSql += "FROM physical_entity pe, db_source ds, interaction_participant ip, interaction i, interaction_type it, role r ";
-			aSql += "WHERE i.id in (" + idList + ") ";
-			// aSql += "AND pe." + colName + " <> ? ";
-			aSql += "AND pe.id=ip.participant_id ";
-			aSql += "AND pe.accession_db=ds.id ";
-			aSql += "AND ip.interaction_id=i.id ";
-			aSql += "AND i.interaction_type=it.id ";
-			aSql += "AND ip.role_id = r.id ";
-			aSql += "order by it.short_name, pe.gene_symbol";
-
-			prepStat = conn.prepareStatement(aSql);
-			// prepStat.setString(1, tfGene.gene);
-
-			ResultSet rs2 = prepStat.executeQuery();
-
-			String targetGene = null;
-			String shortName = null;
-			String previousShortName = null;
-			String roleName = null;
-			String dbName = null;
-
-			boolean hasData = false;
-
-			while (rs2.next()) {
-
-				dbName = rs2.getString("dbName");
-				if (!presentByGeneId)
-					targetGene = rs2.getString("gene_symbol");
-				else if (dbName.equalsIgnoreCase("Entrez Gene"))
-					targetGene = rs2.getString("primary_accession");
-				else
-					targetGene = rs2.getString("secondary_accession");
-
-				shortName = rs2.getString("short_name");
-				roleName = rs2.getString("name");
-
-				if (targetGene == null || targetGene.equals(tfGene.gene)
-						|| roleName.equals(MODULATOR))
-					continue;
-				if (previousShortName == null) {
-					hasData = true;
-					out.print(tfGene.gene + "\t" + shortName + "\t"
-							+ targetGene);
-				} else if (previousShortName.equalsIgnoreCase(shortName)) {
-					out.print("\t" + targetGene);
-				} else {
-					out.println();
-					out.print(tfGene.gene + "\t" + shortName + "\t"
-							+ targetGene);
-
-				}
-				previousShortName = shortName;
-			}
-			if (hasData)
-				out.println();
-			rs2.close();
-			prepStat.close();
-
-		}
-
-		conn.close();
-		logger.info("End exporting....");
-	}   */
-
-	/*private List<GeneInfo> getRelatedInteractionGenes(int versionId,
-			String interactionType, boolean presentByGeneId,
-			Connection exportConn) throws SQLException {
-		String aSql = null;
-		List<GeneInfo> tfList = new ArrayList<GeneInfo>();
-
-		if (presentByGeneId)
-			aSql = "SELECT pe.primary_accession, pe.secondary_accession, it.short_name ";
-		else
-			aSql = "SELECT pe.gene_symbol, it.short_name ";
-		aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
-		aSql += "WHERE pe.id=ip.participant_id ";
-		aSql += "AND ip.interaction_id=i.id ";
-		aSql += "AND i.id = iiv.interaction_id ";
-		aSql += "AND r.name <> '" + TARGET + "' ";
-		aSql += "AND ip.role_id = r.id ";
-		aSql += "And iiv.interactome_version_id = " + versionId + " ";
-		if (!interactionType.equalsIgnoreCase("ALL")) {
-			aSql += "AND it.id = i.interaction_type ";
-			aSql += "and it.name ='" + interactionType + "' ";
-		}
-
-		if (presentByGeneId)
-			aSql += "group by pe.primary_accession, pe.secondary_accession";
-		else
-			aSql += "group by pe.gene_symbol";
-
-		Statement stm = exportConn.createStatement();
-		ResultSet rs = stm.executeQuery(aSql);
-
-		if ((presentByGeneId)) {
-			while (rs.next()) {
-				String gene = rs.getString("primary_accession");
-				if (gene == null || gene.trim().equals("")
-						|| gene.trim().equals("null"))
-					tfList.add(new GeneInfo(
-							rs.getString("secondary_accession"), false));
-				else
-					tfList.add(new GeneInfo(gene, true));
-			}
-
-		} else {
-			while (rs.next())
-				tfList.add(new GeneInfo(rs.getString("gene_symbol")));
-		}
-		stm.close();
-		rs.close();
-
-		return tfList;
-	}  */
+	} 
+	 
 
 	private List<GeneInfo> getRelatedInteractionGenes(int versionId,
 			String interactionType, String presentBy, Connection exportConn)
@@ -594,8 +289,8 @@ public class InteractionsExport {
 		aSql = "SELECT pe.primary_accession, pe.secondary_accession, it.short_name ";
 		aSql += "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
 		aSql += "WHERE "
-				+ "pe.gene_symbol is null OR pe.gene_symbol='UNKNOWN' ";
-		aSql += "pe.id=ip.participant_id ";
+				+ "(pe.gene_symbol is null OR pe.gene_symbol='UNKNOWN') ";
+		aSql += "AND pe.id=ip.participant_id ";
 		aSql += "AND ip.interaction_id=i.id ";
 		aSql += "AND i.id = iiv.interaction_id ";
 		aSql += "AND r.name <> '" + TARGET + "' ";
@@ -730,7 +425,7 @@ public class InteractionsExport {
 
 		ResultSet rs1 = prepStat.executeQuery();
 		
-		logger.info("test 1");
+	 
 		String idList = "";
 		while (rs1.next()) {
 			if (!idList.trim().equals(""))
@@ -740,7 +435,7 @@ public class InteractionsExport {
 		}
 		rs1.close();
 		prepStat.close();
-		logger.info("test 2");
+		 
 		return idList;
 	}
 
