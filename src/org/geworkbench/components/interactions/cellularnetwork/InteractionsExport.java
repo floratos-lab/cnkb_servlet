@@ -31,9 +31,9 @@ public class InteractionsExport {
 	private static final Logger logger = Logger
 			.getLogger(InteractionsExport.class);
 
-	public void getInteractionsSifFormat(int versionId,
-			String interactionType, String presentBy, PrintWriter out,
-			Connection conn) throws SQLException {
+	public void getInteractionsSifFormat(int versionId, String interactionType,
+			String presentBy, PrintWriter out, Connection conn)
+			throws SQLException {
 
 		logger.info("Start exporting....");
 
@@ -61,51 +61,51 @@ public class InteractionsExport {
 			logger.debug("Start get ...." + tfGene.gene);
 			String idList = getInteractionIds(tfGene, interactionType,
 					versionId, prepStat, conn);
-			 
-			 
-			aSql = "SELECT pe.primary_accession, pe.secondary_accession, pe.gene_symbol, it.short_name, r.name ";			 
+
+			aSql = "SELECT pe.primary_accession, pe.secondary_accession, pe.gene_symbol, it.short_name, r.name ";
 			aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r ";
-			aSql += "WHERE i.id in (" + idList + ") ";		 
-			aSql += "AND pe.id=ip.participant_id ";			 
+			aSql += "WHERE i.id in (" + idList + ") ";
+			aSql += "AND pe.id=ip.participant_id ";
 			aSql += "AND ip.interaction_id=i.id ";
 			aSql += "AND i.interaction_type=it.id ";
 			aSql += "AND ip.role_id = r.id ";
 			aSql += "order by it.short_name, pe.gene_symbol";
 
 			prepStat = conn.prepareStatement(aSql);
-			 
+
 			ResultSet rs2 = prepStat.executeQuery();
 
 			String targetGene = null;
 			String shortName = null;
 			String previousShortName = null;
 			String roleName = null;
-			 
-			boolean hasData = false;			 
-			while (rs2.next()) {		 
+
+			boolean hasData = false;
+			while (rs2.next()) {
 				if (presentBy.equalsIgnoreCase(GeneSymbolOnly)) {
 					targetGene = rs2.getString("gene_symbol");
 				} else if (presentBy.equalsIgnoreCase(GeneSymbolPreferred)) {
 					targetGene = rs2.getString("gene_symbol");
 					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.equalsIgnoreCase("UNKNOWN"))
+							|| targetGene.trim().equalsIgnoreCase("UNKNOWN"))
 						targetGene = rs2.getString("primary_accession");
 					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.equalsIgnoreCase("UNKNOWN"))
+							|| targetGene.trim().equalsIgnoreCase("UNKNOWN"))
 						targetGene = rs2.getString("secondary_accession");
 				} else if (presentBy.equalsIgnoreCase(EntrezIDOnly))
 					targetGene = rs2.getString("primary_accession");
 				else if (presentBy.equalsIgnoreCase(EntrezIDPreferred)) {
 					targetGene = rs2.getString("primary_accession");
 					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.equalsIgnoreCase("UNKNOWN"))
+							|| targetGene.trim().equalsIgnoreCase("UNKNOWN"))
 						targetGene = rs2.getString("secondary_accession");
 				}
 
 				shortName = rs2.getString("short_name");
 				roleName = rs2.getString("name");
-
+ 
 				if (targetGene == null || targetGene.equals(tfGene.gene)
+						|| targetGene.trim().equalsIgnoreCase("UNKNOWN")
 						|| roleName.equals(MODULATOR))
 					continue;
 				if (previousShortName == null) {
@@ -122,7 +122,7 @@ public class InteractionsExport {
 				}
 				previousShortName = shortName;
 			}
-			 
+
 			if (hasData)
 				out.println();
 			rs2.close();
@@ -134,9 +134,9 @@ public class InteractionsExport {
 		logger.info("End exporting....");
 	}
 
-	public void getInteractionsAdjFormat(int versionId,
-			String interactionType, String presentBy, PrintWriter out,
-			Connection conn) throws SQLException {
+	public void getInteractionsAdjFormat(int versionId, String interactionType,
+			String presentBy, PrintWriter out, Connection conn)
+			throws SQLException {
 
 		logger.info("Start exporting....");
 
@@ -206,7 +206,7 @@ public class InteractionsExport {
 				roleName = rs2.getString("name");
 
 				if (targetGene == null || targetGene.trim().equals("")
-						|| targetGene.equalsIgnoreCase("UNKNOWN")
+						|| targetGene.trim().equalsIgnoreCase("UNKNOWN")
 						|| targetGene.equals(tfGene.gene)
 						|| roleName.equals(MODULATOR))
 					continue;
@@ -225,8 +225,7 @@ public class InteractionsExport {
 		}
 
 		logger.info("End exporting....");
-	} 
-	 
+	}
 
 	private List<GeneInfo> getRelatedInteractionGenes(int versionId,
 			String interactionType, String presentBy, Connection exportConn)
@@ -424,8 +423,7 @@ public class InteractionsExport {
 		prepStat.setInt(2, versionId);
 
 		ResultSet rs1 = prepStat.executeQuery();
-		
-	 
+
 		String idList = "";
 		while (rs1.next()) {
 			if (!idList.trim().equals(""))
@@ -435,7 +433,7 @@ public class InteractionsExport {
 		}
 		rs1.close();
 		prepStat.close();
-		 
+
 		return idList;
 	}
 
