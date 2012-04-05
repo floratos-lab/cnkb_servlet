@@ -165,8 +165,9 @@ public class InteractionsExport {
 			String idList = getInteractionIds(tfGene, interactionType,
 					versionId, prepStat, conn);
 			logger.debug("get idlist");
-			aSql = "SELECT pe.primary_accession, pe.secondary_accession, pe.gene_symbol, r.name ";
-			aSql += "FROM physical_entity pe, interaction_participant ip, interaction i,role r ";
+			aSql = "SELECT pe.primary_accession, pe.secondary_accession, pe.gene_symbol, r.name, ic.score ";
+			aSql += "FROM (physical_entity pe, interaction_participant ip, interaction i,role r) ";
+			aSql += "left join interaction_confidence ic on (i.id=ic.interaction_id) ";
 			aSql += "WHERE i.id in (" + idList + ") ";
 			aSql += "AND pe.id=ip.participant_id ";
 			aSql += "AND ip.interaction_id=i.id ";
@@ -177,7 +178,7 @@ public class InteractionsExport {
 			ResultSet rs2 = prepStat.executeQuery();
 
 			String targetGene = null;
-			Double confidence = null;
+			String confidence = null;
 			String roleName = null;
 			boolean hasData = false;
 
@@ -202,7 +203,7 @@ public class InteractionsExport {
 						targetGene = rs2.getString("secondary_accession");
 				}
 
-				confidence = 0.8;
+				
 				roleName = rs2.getString("name");
 
 				if (targetGene == null || targetGene.trim().equals("")
@@ -210,6 +211,8 @@ public class InteractionsExport {
 						|| targetGene.equals(tfGene.gene)
 						|| roleName.equals(MODULATOR))
 					continue;
+				
+				confidence = rs2.getString("score");
 				if (hasData == false) {
 					out.print(tfGene.gene + "\t" + targetGene + "\t"
 							+ confidence);
