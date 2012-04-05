@@ -13,7 +13,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.PreparedStatement; 
+import java.sql.PreparedStatement;
 import java.util.Properties;
 
 import javax.servlet.ServletException;
@@ -47,6 +47,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String GET_INTERACTION_BY_ENTREZID = "getInteractionsByEntrezId";
 	private static final String GET_INTERACTION_BY_GENESYMBOL = "getInteractionsByGeneSymbol";
 	private static final String GET_INTERACTION_TYPES = "getInteractionTypes";
+	private static final String GET_INTERACTION_EVIDENCES = "getInteractionEvidences";
 	private static final String GET_DATASET_NAMES = "getDatasetNames";
 	private static final String GET_INTERACTOME_NAMES = "getInteractomeNames";
 	private static final String GET_INTERACTOME_DESCRIPTION = "getInteractomeDescription";
@@ -55,7 +56,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String GET_INTERACTIONS_SIF_FORMAT = "getInteractionsSifFormat";
 	private static final String GET_INTERACTIONS_ADJ_FORMAT = "getInteractionsAdjFormat";
 	private static final String CLOSE_DB_CONNECTION = "closeDbConnection";
- 
+
 	private static final String SECONDARY_ACCESSION = "secondary_accession";
 
 	/**
@@ -140,7 +141,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	public void doPost(HttpServletRequest req, HttpServletResponse resp) {
 
 		String methodName = "";
-		
+
 		PreparedStatement statement = null;
 
 		Connection conn = null;
@@ -148,7 +149,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		try {
 
 			PrintWriter out = resp.getWriter();
-			
+
 			if (logger.isDebugEnabled()) {
 				logger.debug("doPost(HttpServletRequest, HttpServletResponse) - InteractionsConnectionImplServlet doPost, you got here  ---"); //$NON-NLS-1$
 			}
@@ -248,6 +249,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 								interactionTypes, nodePresentedBy, out, conn);
 				} else if (methodName.equalsIgnoreCase(GET_INTERACTION_TYPES)) {
 					rs = this.getInteractionTypes(conn, statement);
+				} else if (methodName
+						.equalsIgnoreCase(GET_INTERACTION_EVIDENCES)) {
+					rs = this.getInteractionEvidences(conn, statement);
 				} else if (methodName
 						.equalsIgnoreCase(GET_INTERACTION_TYPES_BY_INTERACTOMEVERSION)) {
 					String context = tokens[1].trim();
@@ -351,9 +355,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 					}
 					rs.close();
-					
+
 				}
-			 
+
 				out.flush();
 				out.close();
 
@@ -488,8 +492,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		if (interactionIdList.equals(""))
 			interactionIdList = "0";
-		aSql = "SELECT pe.primary_accession as ms_id2, ds.name as db2_xref, pe.gene_symbol as gene2, i.confidence_value as confidence_value, it.name as interaction_type ";
-		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds ";
+		aSql = "SELECT pe.primary_accession as ms_id2, ds.name as db2_xref, pe.gene_symbol as gene2, it.name as interaction_type, ie.evidence_id as evidence_id, ic.score as confidence_value, ct.name as confidence_type ";
+		aSql += "FROM (physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds) ";
+		aSql += "left join  interaction_evidence ie on (i.id=ie.interaction_id) ";
+		aSql += "left join interaction_confidence ic on (i.id=ic.interaction_id) ";
+		aSql += "left join confidence_type ct on (ic.confidence_type_id=ct.id) ";
 		aSql += "WHERE pe.id=ip.participant_id ";
 		aSql += "AND pe.accession_db=ds.id ";
 		aSql += "AND ip.interaction_id=i.id ";
@@ -506,6 +513,15 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			PreparedStatement statement) throws SQLException {
 		String aSql = null;
 		aSql = "SELECT name as interaction_type, short_name as short_name FROM  interaction_type";
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
+	}
+
+	private ResultSet getInteractionEvidences(Connection conn,
+			PreparedStatement statement) throws SQLException {
+		String aSql = null;
+		aSql = "SELECT id as id, description as description FROM  evidence_type";
 		statement = conn.prepareStatement(aSql);
 		ResultSet rs = statement.executeQuery();
 		return rs;
@@ -831,8 +847,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return rs;
 	}
 
-	 
- 
 	private ResultSet getInteractionsByEntrezIdOrGeneSymbol(String entrezId,
 			String geneSymbol, String context, String version, Connection conn,
 			PreparedStatement statement) throws SQLException {
@@ -871,17 +885,19 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		if (interactionIdList.equals(""))
 			interactionIdList = "0";
-		aSql = "SELECT pe.primary_accession as primary_accession, pe.secondary_accession as secondary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,i.confidence_value as confidence_value, it.name as interaction_type ";
-		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds ";
+		aSql = "SELECT pe.primary_accession as primary_accession, pe.secondary_accession as secondary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,it.name as interaction_type, ie.evidence_id as evidence_id, ic.score as confidence_value, ct.name as confidence_type ";
+		aSql += "FROM (physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds) ";
+		aSql += "left join  interaction_evidence ie on (i.id=ie.interaction_id) ";
+		aSql += "left join interaction_confidence ic on (i.id=ic.interaction_id) ";
+		aSql += "left join confidence_type ct on (ic.confidence_type_id=ct.id) ";
 		aSql += "WHERE pe.id=ip.participant_id ";
 		aSql += "AND pe.accession_db=ds.id ";
 		aSql += "AND ip.interaction_id=i.id ";
-		aSql += "AND i.interaction_type=it.id ";
+		aSql += "AND i.interaction_type=it.id ";		 
 		aSql += "AND i.id in (" + interactionIdList + ") ";
 		aSql += "ORDER BY i.id";
 
 		return aSql;
 	}
 
-	 
 }
