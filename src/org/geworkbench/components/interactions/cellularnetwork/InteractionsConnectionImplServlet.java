@@ -14,6 +14,8 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.PreparedStatement;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 import javax.servlet.ServletException;
@@ -55,6 +57,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String GET_INTERACTION_TYPES_BY_INTERACTOMEVERSION = "getInteractionTypesByInteractomeVersion";
 	private static final String GET_INTERACTIONS_SIF_FORMAT = "getInteractionsSifFormat";
 	private static final String GET_INTERACTIONS_ADJ_FORMAT = "getInteractionsAdjFormat";
+	private static final String GET_CONFIDENCE_TYPES = "getConfidenceTypes";
 	private static final String CLOSE_DB_CONNECTION = "closeDbConnection";
 
 	private static final String SECONDARY_ACCESSION = "secondary_accession";
@@ -78,8 +81,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String MYSQL_URL = "mysql.url";
 	private static final String DATASET_USER = "dataset.user";
 	private static final String DATASET_PASSWD = "dataset.passwd";
-	private static final String ENTREZ_GENE = "Entrez Gene";
-
+	 
 	private static String mysql_jdbc_driver;
 	private static String mysql_user;
 	private static String mysql_passwd;
@@ -205,11 +207,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					String version = tokens[4].trim();
 					rs = this.getInteractionsByEntrezIdOrGeneSymbol(geneId,
 							geneSymbol, context, version, conn, statement);
-					// rs = this.getInteractionsByEntrezId(geneId, context,
-					// version);
-					// rs = this.getInteractionsByGeneSymbol(geneSymbol,
-					// context,
-					// version);
+
 				} else if (methodName
 						.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID)) {
 					geneId = tokens[1].trim();
@@ -249,6 +247,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 								interactionTypes, nodePresentedBy, out, conn);
 				} else if (methodName.equalsIgnoreCase(GET_INTERACTION_TYPES)) {
 					rs = this.getInteractionTypes(conn, statement);
+				} else if (methodName.equalsIgnoreCase(GET_CONFIDENCE_TYPES)) {
+					rs = this.getConfidenceTypes(conn, statement);
 				} else if (methodName
 						.equalsIgnoreCase(GET_INTERACTION_EVIDENCES)) {
 					rs = this.getInteractionEvidences(conn, statement);
@@ -289,11 +289,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 						gene1Data = getGeneDataByEntrezId(geneId, conn,
 								statement);
 					}
-					boolean hasSecondary = false;
+
 					for (int i = 1; i <= numberOfColumns; i++) {
 						if (rsmd.getColumnName(i).trim()
 								.equalsIgnoreCase(SECONDARY_ACCESSION)) {
-							hasSecondary = true;
+
 							continue;
 						}
 						if (i > 1) {
@@ -301,6 +301,19 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 						}
 						metaData += rsmd.getColumnName(i);
 					}
+
+					if (methodName
+							.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID_OR_GENESYMBOL)
+							|| methodName
+									.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID)
+							|| methodName
+									.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL)) {
+
+						metaData += DEL + "other_confidence_values" + DEL
+								+ "other_confidence_types";
+
+					}
+
 					out.println(metaData);
 
 					// get values
@@ -317,10 +330,47 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 							out.println(row);
 						}
 
-					} else {
+					} else if (methodName
+							.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID_OR_GENESYMBOL)
+							|| methodName
+									.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID)
+							|| methodName
+									.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL)) {
+
+						int previousInteractionId = 0;
+
+						List<String> rowList = new ArrayList<String>();
+						int previousConfidenceType = 0;
+						String other_scores = "", other_types = "";
 						while (rs.next()) {
 							String row = new String();
-							if (hasSecondary) {
+							int interactionId = rs.getInt("interaction_id");
+							int currentConfidenceType = rs
+									.getInt("confidence_type");
+							if (previousInteractionId == 0
+									|| previousInteractionId != interactionId) {
+								if (rowList.size() > 0) {
+									if (other_scores.trim().equals("")) {
+										other_scores = "null";
+										other_types = "null";
+									}
+									for (int i = 0; i < rowList.size(); i++) {
+										String r = rowList.get(i);
+										r += DEL + other_scores + DEL
+												+ other_types;
+										out.println(r.trim());
+									}
+								}
+
+								previousInteractionId = interactionId;
+								previousConfidenceType = currentConfidenceType;
+								rowList.clear();
+								other_scores = "";
+								other_types = "";
+
+							}
+
+							if (previousConfidenceType == currentConfidenceType) {
 								if (rs.getString(1) == null
 										|| rs.getString(1).trim()
 												.equals("null")
@@ -342,14 +392,43 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 										row += rs.getString(i);
 									}
 								}
+
+								rowList.add(row);
+
 							} else {
-								for (int i = 1; i <= numberOfColumns; i++) {
-									if (i > 1) {
-										row += DEL;
-									}
-									row += rs.getString(i);
-								}
+								other_scores += rs.getFloat("confidence_value")
+										+ ";";
+								other_types += rs.getFloat("confidence_type")
+										+ ";";
 							}
+
+						}
+
+						if (rowList.size() > 0) {
+							if (other_scores.trim().equals("")) {
+								other_scores = "null";
+								other_types = "null";
+							}
+							for (int i = 0; i < rowList.size(); i++) {
+								String r = rowList.get(i);
+								r += DEL + other_scores + DEL + other_types;
+								out.println(r.trim());
+							}
+
+							rowList.clear();
+						}
+
+					} else {
+						while (rs.next()) {
+							String row = new String();
+
+							for (int i = 1; i <= numberOfColumns; i++) {
+								if (i > 1) {
+									row += DEL;
+								}
+								row += rs.getString(i);
+							}
+
 							out.println(row.trim());
 						}
 
@@ -408,6 +487,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				if (conn != null)
 					conn.close();
 				conn = null;
+
 			} catch (SQLException e) {
 			}
 
@@ -506,6 +586,15 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		statement = conn.prepareStatement(aSql);
 		ResultSet rs = statement.executeQuery();
 
+		return rs;
+	}
+
+	private ResultSet getConfidenceTypes(Connection conn,
+			PreparedStatement statement) throws SQLException {
+		String aSql = null;
+		aSql = "SELECT id as id, name as name FROM confidence_type";
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
 		return rs;
 	}
 
@@ -687,14 +776,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		int interactomeVersionId = getInteractomeVersionId(context, version,
 				conn, statement);
 
+		logger.info("getInteractionIdsByEntrezId start query ...");
+
 		aSql = "SELECT i.id ";
-		aSql += "FROM physical_entity pe, db_source ds, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
+		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
 		aSql += "WHERE ip.participant_id = pe.id ";
 		aSql += "AND ip.interaction_id = i.id ";
-		aSql += "AND i.id = iiv.interaction_id ";
-		aSql += "AND ds.name='" + ENTREZ_GENE + "' ";
-		aSql += "AND pe.accession_db = ds.id  ";
-		aSql += "AND i.id = iiv.interaction_id ";
+		aSql += "AND i.id = iiv.interaction_id "; 
 		aSql += "AND iiv.interactome_version_id =? ";
 		aSql += "AND pe.primary_accession = ?";
 
@@ -702,6 +790,49 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		statement.setInt(1, interactomeVersionId);
 		statement.setInt(2, new Integer(geneId));
 		ResultSet rs = statement.executeQuery();
+
+		logger.info("getInteractionIdsByEntrezId finist query ...");
+
+		while (rs.next()) {
+			if (!str.trim().equals(""))
+				str += ", ";
+			str += rs.getString("id");
+
+		}
+
+		statement.close();
+
+		return str;
+
+	}
+
+	// a different sql select statement, test for performance
+	private String getInteractionIdsByEntrezIdOrGeneSymbol(String geneId,
+			String geneSymbol, String context, String version, Connection conn,
+			PreparedStatement statement) throws SQLException {
+
+		String aSql = null;
+		String str = "";
+		int interactomeVersionId = getInteractomeVersionId(context, version,
+				conn, statement);
+
+		logger.debug("getInteractionIdsByEntrezIdOrGeneSymbol start query ...");
+
+		aSql = "SELECT distinct i.id ";
+		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
+		aSql += "WHERE ip.participant_id = pe.id ";
+		aSql += "AND ip.interaction_id = i.id ";		 
+		aSql += "AND i.id = iiv.interaction_id ";
+		aSql += "AND iiv.interactome_version_id =? ";
+		aSql += "AND ((pe.primary_accession = ? ) OR (pe.gene_symbol = ? AND pe.secondary_accession is not null))";
+
+		statement = conn.prepareStatement(aSql);
+		statement.setInt(1, interactomeVersionId);
+		statement.setInt(2, new Integer(geneId));
+		statement.setString(3, new String(geneSymbol));
+		ResultSet rs = statement.executeQuery();
+
+		logger.debug("getInteractionIdsByEntrezIdOrGeneSymbol finist query ...");
 
 		while (rs.next()) {
 			if (!str.trim().equals(""))
@@ -757,23 +888,26 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		String aSql = null;
 		String str = "";
+
+		logger.info("getNonEntrezInteractionIdsByGeneSymbol start query ...");
 		int interactomeVersionId = getInteractomeVersionId(context, version,
 				conn, statement);
 
 		aSql = "SELECT i.id ";
-		aSql += "FROM physical_entity pe, db_source ds, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
+		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
 		aSql += "WHERE ip. participant_id = pe.id ";
 		aSql += "AND ip.interaction_id = i.id ";
 		aSql += "AND i.id = iiv.interaction_id ";
-		aSql += "AND ds.name <> '" + ENTREZ_GENE + "' ";
-		aSql += "AND pe.accession_db = ds.id  ";
 		aSql += "AND iiv.interactome_version_id =? ";
 		aSql += "AND pe.gene_symbol = ?";
+		aSql += "AND secondary_accession is not null";
 
 		statement = conn.prepareStatement(aSql);
 		statement.setInt(1, interactomeVersionId);
 		statement.setString(2, geneSymbol);
 		ResultSet rs = statement.executeQuery();
+
+		logger.info("getNonEntrezInteractionIdsByGeneSymbol finish query ...");
 
 		while (rs.next()) {
 			if (!str.trim().equals(""))
@@ -847,16 +981,17 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return rs;
 	}
 
-	private ResultSet getInteractionsByEntrezIdOrGeneSymbol(String entrezId,
-			String geneSymbol, String context, String version, Connection conn,
-			PreparedStatement statement) throws SQLException {
+	private ResultSet getInteractionsByEntrezIdOrGeneSymbol_orig(
+			String entrezId, String geneSymbol, String context, String version,
+			Connection conn, PreparedStatement statement) throws SQLException {
 		String aSql = null;
 
 		/*
-		 * String interactionIdList = this
-		 * .getInteractionIdsByEntrezIdOrGeneSymbol(entrezId, geneSymbol,
-		 * context, version);
+		 * String interactionIdList =
+		 * getInteractionIdsByEntrezIdOrGeneSymbol(entrezId, geneSymbol,
+		 * context, version, conn, statement);
 		 */
+
 		String interactionIdListByEntrezId = getInteractionIdsByEntrezId(
 				entrezId, context, version, conn, statement);
 		String interactionIdListByName = this
@@ -872,10 +1007,57 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		else if (!interactionIdListByName.equals(""))
 			interactionIdList = interactionIdListByName;
 
+		logger.info("start query ...");
+
 		aSql = getInteractionSqlbyIdList(interactionIdList, context, version);
-		// aSql = getInteractionSymAndTypeSql(context, version);
+
 		statement = conn.prepareStatement(aSql);
+
 		ResultSet rs = statement.executeQuery(aSql);
+
+		logger.info("finish query ...");
+
+		return rs;
+	}
+
+	private ResultSet getInteractionsByEntrezIdOrGeneSymbol(String entrezId,
+			String geneSymbol, String context, String version, Connection conn,
+			PreparedStatement statement) throws SQLException {
+
+		String aSql = null;
+		String qubSql = null;
+		int interactomeVersionId = getInteractomeVersionId(context, version,
+				conn, statement);
+		logger.info("start query ...");
+		qubSql = "SELECT distinct i1.* ";
+		qubSql += "FROM physical_entity pe1, interaction_participant ip1, interaction i1, interaction_interactome_version  iiv1 ";
+		qubSql += "WHERE ip1.participant_id = pe1.id ";
+		qubSql += "AND ip1.interaction_id = i1.id ";
+		qubSql += "AND i1.id = iiv1.interaction_id ";	 
+		qubSql += "AND iiv1.interactome_version_id =? ";
+		qubSql += "AND ( pe1.primary_accession = ? OR (pe1.gene_symbol = ? AND pe1.secondary_accession is not null ) )";
+
+		aSql = "SELECT pe.primary_accession as primary_accession, pe.secondary_accession as secondary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,it.name as interaction_type, ie.evidence_id as evidence_id, ic.score as confidence_value, ct.id as confidence_type ";
+		aSql += "FROM (("
+				+ qubSql
+				+ ") as i, physical_entity pe, interaction_participant ip, interaction_type it, db_source ds) ";
+		aSql += "left join  interaction_evidence ie on (i.id=ie.interaction_id) ";
+		aSql += "left join interaction_confidence ic on (i.id=ic.interaction_id) ";
+		aSql += "left join confidence_type ct on (ic.confidence_type_id=ct.id) ";
+		aSql += "WHERE ip.interaction_id=i.id ";
+		aSql += "AND pe.accession_db=ds.id ";
+		aSql += "AND pe.id=ip.participant_id ";
+		aSql += "AND i.interaction_type=it.id  ";
+		aSql += "ORDER BY i.id";
+
+		statement = conn.prepareStatement(aSql);
+		statement.setInt(1, interactomeVersionId);
+		statement.setInt(2, new Integer(entrezId));
+		statement.setString(3, new String(geneSymbol));
+		ResultSet rs = statement.executeQuery();
+
+		logger.info("after query ...");
+
 		return rs;
 	}
 
@@ -885,19 +1067,21 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		if (interactionIdList.equals(""))
 			interactionIdList = "0";
-		aSql = "SELECT pe.primary_accession as primary_accession, pe.secondary_accession as secondary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,it.name as interaction_type, ie.evidence_id as evidence_id, ic.score as confidence_value, ct.name as confidence_type ";
+
+		aSql = "SELECT pe.primary_accession as primary_accession, pe.secondary_accession as secondary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,it.name as interaction_type, ie.evidence_id as evidence_id, ic.score as confidence_value, ct.id as confidence_type  ";
 		aSql += "FROM (physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds) ";
 		aSql += "left join  interaction_evidence ie on (i.id=ie.interaction_id) ";
 		aSql += "left join interaction_confidence ic on (i.id=ic.interaction_id) ";
 		aSql += "left join confidence_type ct on (ic.confidence_type_id=ct.id) ";
-		aSql += "WHERE pe.id=ip.participant_id ";
+		aSql += "WHERE i.id in (" + interactionIdList + ") ";
+		aSql += "AND pe.id=ip.participant_id ";
 		aSql += "AND pe.accession_db=ds.id ";
 		aSql += "AND ip.interaction_id=i.id ";
-		aSql += "AND i.interaction_type=it.id ";		 
-		aSql += "AND i.id in (" + interactionIdList + ") ";
-		aSql += "ORDER BY i.id";
+		aSql += "AND i.interaction_type=it.id ";
+		aSql += "ORDER BY i.id, ct.id";
 
 		return aSql;
+
 	}
 
 }
