@@ -155,7 +155,7 @@ public class InteractionsExport {
 		out.println("adj format data");
 
 		for (GeneInfo tfGene : tfList) {
-
+             
 			if (tfGene.gene == null || tfGene.gene.trim().equals("")
 					|| tfGene.gene.equalsIgnoreCase("UNKNOWN")) {
 				logger.info("drop gene ...." + tfGene);
@@ -210,7 +210,7 @@ public class InteractionsExport {
 						|| targetGene.trim().equalsIgnoreCase("UNKNOWN")
 						|| targetGene.equals(tfGene.gene)
 						|| roleName.equals(MODULATOR))
-					continue;
+					continue;				
 				
 				confidence = rs2.getString("score");
 				if (hasData == false) {
