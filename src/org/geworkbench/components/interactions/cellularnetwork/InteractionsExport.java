@@ -58,7 +58,7 @@ public class InteractionsExport {
 				logger.info("drop gene ...." + tfGene);
 				continue;
 			}
-			logger.debug("Start get ...." + tfGene.gene);
+			logger.info("Start get ...." + tfGene.gene);
 			String idList = getInteractionIds(tfGene, interactionType,
 					versionId, prepStat, conn);
 
@@ -74,6 +74,8 @@ public class InteractionsExport {
 			prepStat = conn.prepareStatement(aSql);
 
 			ResultSet rs2 = prepStat.executeQuery();
+			
+			logger.info("End get ...." + tfGene.gene);
 
 			String targetGene = null;
 			String shortName = null;
