@@ -8,8 +8,7 @@ import java.beans.PropertyVetoException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
-import java.sql.Connection; 
-import java.sql.DriverManager;
+import java.sql.Connection;  
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -18,6 +17,7 @@ import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.Date;
 
 import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
@@ -135,11 +135,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			dataSource.setAcquireRetryAttempts(10);
 			dataSource.setAcquireIncrement(3);
 			dataSource.setIdleConnectionTestPeriod(100);
-			dataSource.setMaxPoolSize(1);
-			//dataSource.setMinPoolSize(1);
+			dataSource.setMaxPoolSize(3);		 
 			dataSource.setMaxStatementsPerConnection(100);
-			//dataSource.setMaxStatements(100);
-			
+		 
 			
 		} catch (IOException ie) {
 			logger.error(
@@ -171,9 +169,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				logger.debug("doPost(HttpServletRequest, HttpServletResponse) - InteractionsConnectionImplServlet doPost, you got here  ---"); //$NON-NLS-1$
 			}
 						 
-
+			java.lang.management.MemoryMXBean memoryBean = java.lang.management.ManagementFactory.getMemoryMXBean();
+		    long l = memoryBean.getHeapMemoryUsage().getMax();
+		    System.out.println(l);
+		    System.out.println("test: " + Runtime.getRuntime().maxMemory());
+		    
 			int len = req.getContentLength();
-
+    
 			// if there are no input data - return
 			if (len < MIN_DATA_LENGTH) {
 				if (logger.isInfoEnabled()) {
@@ -201,12 +203,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			if (methodName.equalsIgnoreCase(CLOSE_DB_CONNECTION))
 				return;
 
-			//if (conn == null) 
-			  // conn = dataSource.getConnection();
+			if (conn == null) 
+			   conn = dataSource.getConnection();
 			 
-			if (conn == null || conn.isClosed())
+			/*if (conn == null || conn.isClosed())
 				conn = DriverManager.getConnection(mysql_url, mysql_user,
-						mysql_passwd);
+						mysql_passwd);*/
                 
 			
 			
@@ -402,7 +404,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 										if (i > 2) {
 											row += DEL;
 										}
-										row += rs.getString(i);
+										if (rs.getString(i) != null)
+										   row += rs.getString(i).trim();
+										else
+										   row += rs.getString(i);
+										
 									}
 
 								} else {
@@ -412,7 +418,10 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 										if (i > 1) {
 											row += DEL;
 										}
-										row += rs.getString(i);
+										if (rs.getString(i) != null)
+										  row += rs.getString(i).trim();
+										else
+										  row += rs.getString(i);
 									}
 								}
 
@@ -507,9 +516,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				if (statement != null)
 					statement.close();
 
-				/*if (conn != null)
+				if (conn != null)
 					conn.close();
-				conn = null;  */
+				conn = null;   
 				
 			} catch (SQLException e) {
 			}
@@ -521,7 +530,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED); // Ie 401
 		resp.setHeader("WWW-Authenticate",
 				"BASIC realm=\"Requires Authentication \"");
-
+		 
 	}
 
 	private boolean needAuthentication(String[] tokens, HttpServletRequest req,
@@ -555,9 +564,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			}
 			if (getAuthentication(context, version, conn).equalsIgnoreCase("N"))
 				return false;
-			String userInfo = req.getHeader("Authorization");
 			BASE64Decoder decoder = new BASE64Decoder();
-			String userAndPasswd = null;
+			String userAndPasswd = null;			 
+			String userInfo = req.getHeader("Authorization");			
 			if (userInfo != null) {
 				userInfo = userInfo.substring(6).trim();
 				userAndPasswd = new String(decoder.decodeBuffer(userInfo));
@@ -873,7 +882,65 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	}
 	
 	
+	 
+	
 	private String getInteractionIdsByEntrezIdOrGeneSymbol(String geneId,
+			String geneSymbol, String context, String version, Connection conn,
+			PreparedStatement prepStatement) throws SQLException {
+
+		String aSql = null;
+		String str = "";
+		int interactomeVersionId = getInteractomeVersionId(context, version,
+				conn, prepStatement);
+
+		
+		logger.debug("start EntrezId query ...");
+		Date startDate = new Date();
+		Long startTime =startDate.getTime();
+		
+		aSql = "SELECT interaction_id ";
+		aSql += "FROM interactions_joined_part ";	 
+		aSql += "WHERE interactome_version_id = " + interactomeVersionId;
+		aSql += " AND primary_accession = " + geneId;		 
+		aSql += " UNION ";
+		aSql += "SELECT interaction_id ";
+		aSql += "FROM interactions_joined_part ";	 
+		aSql += "WHERE interactome_version_id = " + interactomeVersionId;
+		aSql += " AND (gene_symbol = '" + geneSymbol + "' AND primary_accession is null ) ";		 
+	 
+		Statement statement = conn.createStatement();
+		  
+		ResultSet rs = statement.executeQuery(aSql); 		
+
+
+		logger.debug("finist EntrezId query ...");
+
+		int rowNum = 0;
+		while (rs.next()) {
+			if (!str.trim().equals(""))
+				str += ", ";
+			str += rs.getString("interaction_id");
+			rowNum++;
+		}
+
+		statement.close();
+		
+		 
+		Date endDate = new Date();
+		long endTime = endDate.getTime();
+		long elapsedTime = endTime - startTime;
+		//System.out.println(context+": "+ version + "    gene: " + geneSymbol + "  " + rowNum + " interactions");
+		//System.out.println("Query 1 time: " + elapsedTime + " MilliSeconds");
+			 
+		
+		return str;
+
+	}
+	
+	
+	
+	
+	private String getInteractionIdsByEntrezIdOrGeneSymbol_test(String geneId,
 			String geneSymbol, String context, String version, Connection conn,
 			PreparedStatement statement) throws SQLException {
 
@@ -885,7 +952,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		logger.debug("start EntrezId query ...");
 
 		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM interactions_joined idl ";		 
+		aSql += "FROM interactions_joined_part idl ";		 
 		aSql += "WHERE idl.interactome_version_id =? ";
 		aSql += "AND idl.primary_accession = ? ";	 	 
 		aSql += "ORDER BY idl.interaction_id";
@@ -894,7 +961,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		statement.setInt(2, new Integer(geneId));	 
 		ResultSet rs = statement.executeQuery(); 		
 
-		logger.debug("finist EntrezId query ...");
+		logger.debug("finish EntrezId query ...");
 
 		while (rs.next()) {
 			if (!str.trim().equals(""))
@@ -905,19 +972,19 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		statement.close();
 		
-		logger.info("start non EntrezId query ...");
+		logger.debug("start non EntrezId query ...");
 
 		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM interactions_joined idl ";		 
+		aSql += "FROM interactions_joined_part idl ";		 
 		aSql += "WHERE idl.interactome_version_id =? ";
-		aSql += "AND (idl.gene_symbol = ? AND idl.secondary_accession is not null ) ";	 	 
+		aSql += "AND (idl.gene_symbol = ? AND idl.primary_accession is null ) ";	 	 
 		aSql += "ORDER BY idl.interaction_id";
 		statement = conn.prepareStatement(aSql);
 		statement.setInt(1, interactomeVersionId);		 
 		statement.setString(2, new String(geneSymbol));
 		rs = statement.executeQuery(); 
 		
-		logger.info("finished non EntrezId query ...");
+		logger.debug("finished non EntrezId query ...");
 		
 		while (rs.next()) {
 			if (!str.trim().equals(""))
@@ -932,7 +999,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 	}
 	
-	 
 
 	private String getInteractionIdsByGeneSymbol(String geneSymbol,
 			String context, String version, Connection conn,
@@ -987,7 +1053,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			PreparedStatement statement) throws SQLException {
 		String aSql = null;
 		aSql = "SELECT ic.name, ic.interaction_count ";
-		aSql += "FROM interaction_count ic";		 
+		aSql += "FROM interaction_count ic ";		 
 		aSql += "ORDER BY ic.name";
 		statement = conn.prepareStatement(aSql);
 		ResultSet rs = statement.executeQuery();
@@ -1051,13 +1117,20 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		
 		aSql = getInteractionSqlbyIdList(interactionIdList);
 	 
-		logger.debug("start query ...");		 
-
-		logger.debug(aSql);
+		logger.debug("start query ...");
+		logger.debug(aSql);		
+		Date startDate = new Date();
+		long startTime = startDate.getTime();
+		
 		statement = conn.prepareStatement(aSql);
 	 
 		ResultSet rs = statement.executeQuery();
 
+		Date endDate = new Date();
+		long endTime = endDate.getTime();
+		long elapsedTime =endTime - startTime;	 
+		//System.out.println("Query 2 time: " + elapsedTime + " MilliSeconds\n");
+			 
 		logger.debug("after query ...");
 
 		return rs;
@@ -1072,7 +1145,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			interactionIdList = "0";	
 		
 		aSql = "SELECT idl.* ";
-		aSql += "FROM interactions_joined idl ";		 
+		aSql += "FROM interactions_joined_part idl ";		 
 		aSql += "WHERE idl.interaction_id in (" + interactionIdList + ") ";	 
 		aSql += "ORDER BY idl.interaction_id";
 	 
