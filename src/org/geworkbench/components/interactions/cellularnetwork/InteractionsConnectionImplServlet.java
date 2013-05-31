@@ -24,9 +24,8 @@ import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-
-import sun.misc.BASE64Decoder;
-
+ 
+import javax.xml.bind.DatatypeConverter;
 /**
  * @author oleg stheynbuk
  * 
@@ -169,10 +168,10 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				logger.debug("doPost(HttpServletRequest, HttpServletResponse) - InteractionsConnectionImplServlet doPost, you got here  ---"); //$NON-NLS-1$
 			}
 						 
-			java.lang.management.MemoryMXBean memoryBean = java.lang.management.ManagementFactory.getMemoryMXBean();
+			/*java.lang.management.MemoryMXBean memoryBean = java.lang.management.ManagementFactory.getMemoryMXBean();
 		    long l = memoryBean.getHeapMemoryUsage().getMax();
 		    System.out.println(l);
-		    System.out.println("test: " + Runtime.getRuntime().maxMemory());
+		    System.out.println("test: " + Runtime.getRuntime().maxMemory());*/
 		    
 			int len = req.getContentLength();
     
@@ -563,13 +562,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				version = tokens[3];
 			}
 			if (getAuthentication(context, version, conn).equalsIgnoreCase("N"))
-				return false;
-			BASE64Decoder decoder = new BASE64Decoder();
+				return false;			
 			String userAndPasswd = null;			 
 			String userInfo = req.getHeader("Authorization");			
 			if (userInfo != null) {
-				userInfo = userInfo.substring(6).trim();
-				userAndPasswd = new String(decoder.decodeBuffer(userInfo));
+				userInfo = userInfo.substring(6).trim();			 
+				userAndPasswd = new String(DatatypeConverter.parseBase64Binary(userInfo));
 				if (userAndPasswd.equals(dataset_user + ":" + dataset_passwd))
 					return false;
 			}
