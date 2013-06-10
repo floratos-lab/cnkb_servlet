@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.sql.Connection;  
+import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -122,7 +123,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				logger.error("init()", e); //$NON-NLS-1$
 			} 
 
-			dataSource = new ComboPooledDataSource();
+			/*dataSource = new ComboPooledDataSource();
 			try {
 				dataSource.setDriverClass(mysql_jdbc_driver);
 			} catch (PropertyVetoException pve) {
@@ -135,7 +136,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			dataSource.setAcquireIncrement(3);
 			dataSource.setIdleConnectionTestPeriod(100);
 			dataSource.setMaxPoolSize(3);		 
-			dataSource.setMaxStatementsPerConnection(100);
+			dataSource.setMaxStatementsPerConnection(100);*/
 		 
 			
 		} catch (IOException ie) {
@@ -170,8 +171,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 						 
 			/*java.lang.management.MemoryMXBean memoryBean = java.lang.management.ManagementFactory.getMemoryMXBean();
 		    long l = memoryBean.getHeapMemoryUsage().getMax();
-		    System.out.println(l);
-		    System.out.println("test: " + Runtime.getRuntime().maxMemory());*/
+		    logger.info(l);
+		    logger.info("test: " + Runtime.getRuntime().maxMemory()); */
 		    
 			int len = req.getContentLength();
     
@@ -202,12 +203,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			if (methodName.equalsIgnoreCase(CLOSE_DB_CONNECTION))
 				return;
 
-			if (conn == null) 
-			   conn = dataSource.getConnection();
+			//if (conn == null) 
+			  // conn = dataSource.getConnection();
 			 
-			/*if (conn == null || conn.isClosed())
+			if (conn == null || conn.isClosed())
 				conn = DriverManager.getConnection(mysql_url, mysql_user,
-						mysql_passwd);*/
+						mysql_passwd);
                 
 			
 			
@@ -893,9 +894,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		
 		logger.debug("start EntrezId query ...");
-		Date startDate = new Date();
-		Long startTime =startDate.getTime();
-		
+	 
 		aSql = "SELECT interaction_id ";
 		aSql += "FROM interactions_joined_part ";	 
 		aSql += "WHERE interactome_version_id = " + interactomeVersionId;
@@ -921,16 +920,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			rowNum++;
 		}
 
-		statement.close();
-		
-		 
-		Date endDate = new Date();
-		long endTime = endDate.getTime();
-		long elapsedTime = endTime - startTime;
-		//System.out.println(context+": "+ version + "    gene: " + geneSymbol + "  " + rowNum + " interactions");
-		//System.out.println("Query 1 time: " + elapsedTime + " MilliSeconds");
-			 
-		
+		statement.close();		
 		return str;
 
 	}
@@ -1117,18 +1107,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	 
 		logger.debug("start query ...");
 		logger.debug(aSql);		
-		Date startDate = new Date();
-		long startTime = startDate.getTime();
-		
+		 
 		statement = conn.prepareStatement(aSql);
 	 
 		ResultSet rs = statement.executeQuery();
-
-		Date endDate = new Date();
-		long endTime = endDate.getTime();
-		long elapsedTime =endTime - startTime;	 
-		//System.out.println("Query 2 time: " + elapsedTime + " MilliSeconds\n");
-			 
+ 
 		logger.debug("after query ...");
 
 		return rs;
