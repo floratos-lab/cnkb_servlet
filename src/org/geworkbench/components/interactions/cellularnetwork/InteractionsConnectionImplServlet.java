@@ -49,6 +49,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String GET_INTERACTION_BY_ENTREZID_OR_GENESYMBOL = "getInteractionsByEntrezIdOrGeneSymbol";
 	private static final String GET_INTERACTION_BY_ENTREZID = "getInteractionsByEntrezId";
 	private static final String GET_INTERACTION_BY_GENESYMBOL = "getInteractionsByGeneSymbol";
+	private static final String GET_INTERACTION_BY_GENES_AND_LIMIT = "getInteractionsByGenesAndLimit";
+	private static final String GET_INTERACTION_BY_GENESYMBOL_AND_LIMIT = "getInteractionsByGeneSymbolAndLimit";
 	private static final String GET_INTERACTION_TYPES = "getInteractionTypes";
 	private static final String GET_INTERACTION_EVIDENCES = "getInteractionEvidences";
 	private static final String GET_DATASET_NAMES = "getDatasetNames";
@@ -60,6 +62,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String GET_INTERACTIONS_ADJ_FORMAT = "getInteractionsAdjFormat";
 	private static final String GET_CONFIDENCE_TYPES = "getConfidenceTypes";
 	private static final String CLOSE_DB_CONNECTION = "closeDbConnection";
+	private static final String GET_NCI_DATASET_NAMES = "getNciDatasetNames";
+	private static final String GET_THROTTLE_VALUE = "getThrottleValue";
+	 
 
 	private static final String SECONDARY_ACCESSION = "secondary_accession";
 
@@ -248,6 +253,26 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					rs = this.getInteractionsByGeneSymbol(geneSymbol, context,
 							version, conn, statement);
 				} else if (methodName
+						.equalsIgnoreCase(GET_INTERACTION_BY_GENES_AND_LIMIT)) {
+					String geneSymbol = tokens[1].trim();
+					String context = tokens[2].trim();
+					String version = tokens[3].trim();
+					int    limit = new Integer(tokens[4].trim());
+					rs = this.getInteractionsByGenesAndLimit(geneSymbol, context,
+							version, conn, limit, statement);
+				} else if (methodName
+						.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL_AND_LIMIT)) {
+					String geneSymbol = tokens[1].trim();
+					String context = tokens[2].trim();
+					String version = tokens[3].trim();
+					Integer limit = null;				 				
+				    if (tokens.length >= 5)
+						limit = new Integer(tokens[4].trim());	
+				    
+					rs = this.getInteractionsByGeneSymbolAndLimit(geneSymbol, context,
+							version, conn, limit, statement);
+				}
+				else if (methodName
 						.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT)
 						|| methodName
 								.equalsIgnoreCase(GET_INTERACTIONS_ADJ_FORMAT)) {
@@ -285,6 +310,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 							version, conn, statement);
 				} else if (methodName.equalsIgnoreCase(GET_DATASET_NAMES)) {
 					rs = this.getDatasetNames(conn, statement);
+				} else if (methodName.equalsIgnoreCase(GET_NCI_DATASET_NAMES)) {
+					rs = this.getNciDatasetNames(conn, statement);
 				} else if (methodName.equalsIgnoreCase(GET_INTERACTOME_NAMES)) {
 					rs = this.getInteractomeNames(conn, statement);
 				} else if (methodName
@@ -295,6 +322,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				} else if (methodName.equalsIgnoreCase(GET_VERSION_DESCRIPTOR)) {
 					String context = tokens[1].trim();
 					rs = this.getVersionDescriptor(context, conn, statement);
+				} else if (methodName.equalsIgnoreCase(GET_THROTTLE_VALUE)) {
+					String geneSymbol = tokens[1].trim();
+					String context = tokens[2].trim();
+					String version = tokens[3].trim();
+					int rowLimit = new Integer(tokens[4].trim());
+					rs = this.getThrottleValue(geneSymbol, context,
+							version, rowLimit, conn, statement);
 				}
 
 				if (!methodName.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT)
@@ -332,7 +366,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 							|| methodName
 									.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID)
 							|| methodName
-									.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL)) {
+									.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL)
+							|| methodName
+							.equalsIgnoreCase(GET_INTERACTION_BY_GENES_AND_LIMIT)
+							|| methodName
+							.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL_AND_LIMIT)) {
 
 						metaData += DEL + "other_confidence_values" + DEL
 								+ "other_confidence_types";
@@ -360,7 +398,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 							|| methodName
 									.equalsIgnoreCase(GET_INTERACTION_BY_ENTREZID)
 							|| methodName
-									.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL)) {
+									.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL)|| methodName
+									.equalsIgnoreCase(GET_INTERACTION_BY_GENES_AND_LIMIT) ||
+									methodName.equalsIgnoreCase(GET_INTERACTION_BY_GENESYMBOL_AND_LIMIT)) {
 
 						int previousInteractionId = 0;
 
@@ -666,6 +706,23 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 	}
 	
+	private ResultSet getNciDatasetNames(Connection conn,
+			PreparedStatement statement) throws SQLException {
+		String aSql = null;
+
+		aSql = "SELECT DISTINCT ic.name as name, ic.interaction_count as interaction_count ";
+		aSql += "FROM interactome_version v, interaction_count ic,  interactome i ";	 
+		aSql += "WHERE v.interactome_id=i.id ";
+		aSql += "AND i.name=ic.name ";
+		aSql += "AND v.authentication_yn='N' ";
+		aSql += "AND v.nci_yn='Y' ";
+		aSql += "ORDER BY ic.name";
+		
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
+
+	}
 	
 	 
 
@@ -1041,7 +1098,58 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 	}
 
-	 
+	private String getInteractionIdsByGeneSymbolAndLimit(String geneSymbol,
+			 Connection conn, int interactomeVersionId, Integer rowLimit) throws SQLException {
+
+		String aSql = null;
+		String str = "";
+		 
+		aSql = "SELECT ijp.interaction_id as interaction_id FROM interactions_joined_part ijp ";
+		aSql += "WHERE ijp.gene_symbol = '" + geneSymbol + "' ";
+		aSql += "AND ijp.interactome_version_id = " + interactomeVersionId + " ";
+		 
+		if (rowLimit != null)
+		   aSql += "ORDER BY ijp.confidence_value desc limit " + rowLimit;
+		Statement statement = conn.createStatement();		  
+		ResultSet rs = statement.executeQuery(aSql);
+		while (rs.next()) {
+			if (!str.trim().equals(""))
+				str += ", ";
+			str += rs.getString("interaction_id");
+
+		}
+
+		statement.close();
+
+		return str;
+
+	}
+	
+	private String getInteractionIdsByGenesAndLimit(String geneSymbols,
+			 Connection conn, int interactomeVersionId, int rowLimit) throws SQLException {
+
+		String aSql = null;
+		String str = "";
+		 
+		aSql = "SELECT ijp.interaction_id as interaction_id FROM interactions_joined_part ijp ";
+		aSql += "WHERE ijp.interactome_version_id = " + interactomeVersionId + " ";
+		aSql += "AND ijp.gene_symbol in (" + convertToQueryListString(geneSymbols) + ") ";		 
+		aSql += "ORDER BY ijp.confidence_value desc limit " + rowLimit;
+		Statement statement = conn.createStatement();		  
+		ResultSet rs = statement.executeQuery(aSql);
+		while (rs.next()) {
+			if (!str.trim().equals(""))
+				str += ", ";
+			str += rs.getString("interaction_id");
+
+		}
+
+		statement.close();
+
+		return str;
+
+	}
+	
 
 	public ResultSet getInteractomeNames_orig(Connection conn,
 			PreparedStatement statement) throws SQLException {
@@ -1081,7 +1189,26 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		ResultSet rs = statement.executeQuery();
 		return rs;
 	}
-
+	
+	private ResultSet getThrottleValue(String geneSymbols, String context,
+			String version, int rowLimit, Connection conn, PreparedStatement statement)
+			throws SQLException {
+		String aSql = null;
+		int versionId = getInteractomeVersionId(context, version, conn,
+				statement);
+		aSql = "select MIN(c.confidence_value) as confidence_value from  ";
+		aSql += "(SELECT ijp.confidence_value as confidence_value FROM interactions_joined_part ijp ";
+		aSql += "WHERE ijp.gene_symbol in (" + convertToQueryListString(geneSymbols) + ") ";
+		aSql += "AND ijp.interactome_version_id = " + versionId + " ";
+		aSql += "ORDER BY ijp.confidence_value desc limit " + rowLimit + ") c";
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
+	}
+	
+	 
+	
+	
 	private ResultSet getInteractionsByEntrezId(String geneId, String context,
 			String version, Connection conn, PreparedStatement statement)
 			throws SQLException {
@@ -1121,6 +1248,45 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return rs;
 	}	 
 	 
+	private ResultSet getInteractionsByGenesAndLimit(String geneSymbol,
+			String context, String version, Connection conn, int rowLimit,
+			PreparedStatement statement) throws SQLException {
+		String aSql = null;
+		
+		int interactomeVersionId = getInteractomeVersionId(context, version,
+				conn, statement);
+
+		String interactionIdList = getInteractionIdsByGenesAndLimit(geneSymbol,
+				conn, interactomeVersionId, rowLimit);
+
+		
+		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId);
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+
+		return rs;
+	}	 
+	
+	
+	private ResultSet getInteractionsByGeneSymbolAndLimit(String geneSymbol,
+			String context, String version, Connection conn, Integer rowLimit,
+			PreparedStatement statement) throws SQLException {
+		String aSql = null;
+		
+		int interactomeVersionId = getInteractomeVersionId(context, version,
+				conn, statement);
+		logger.debug("get id list start ... ");
+		String interactionIdList = getInteractionIdsByGeneSymbolAndLimit(geneSymbol,
+				conn, interactomeVersionId, rowLimit);
+		logger.debug("get id list finish ... ");
+		
+		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId);
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		logger.debug("get interactions finish ... ");
+		return rs;
+	}
+	
 	
 	private ResultSet getInteractionsByEntrezIdOrGeneSymbol(String entrezId,
 			String geneSymbol, String context, String version, Connection conn,
@@ -1211,7 +1377,24 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 	}
 
-	
+	private String convertToQueryListString(String input)
+	{
+		String list = null;
+		if (input != null && input.trim().length() > 0 ) {
+			String[] array = input.split(",");
+			list = "'" + array[0].trim() + "'";
+		 
+			for (int i = 1; i < array.length; i++)
+			{
+				 	 
+				list += ", '" + array[i].trim() + "'";
+			}			 
+			 
+		}
+	 
+		return list;
+	}
+	 
 	
 
 }
