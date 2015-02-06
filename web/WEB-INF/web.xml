@@ -11,8 +11,18 @@
 		<servlet-class>org.geworkbench.components.interactions.cellularnetwork.InteractionsConnectionImplServlet</servlet-class>
 	</servlet>
 
+    <servlet>
+		<servlet-name>InteractionsServlet-test</servlet-name>
+		<servlet-class>org.geworkbench.components.interactions.cellularnetwork.InteractionsMongoImplServlet</servlet-class>
+	</servlet>
+
 	<servlet-mapping>
 		<servlet-name>InteractionsServlet</servlet-name>
 		<url-pattern>/InteractionsServlet</url-pattern>
 	</servlet-mapping>
+	<servlet-mapping>
+		<servlet-name>InteractionsServlet-test</servlet-name>
+		<url-pattern>/InteractionsServlet-test</url-pattern>
+	</servlet-mapping>
+	
 </web-app>
