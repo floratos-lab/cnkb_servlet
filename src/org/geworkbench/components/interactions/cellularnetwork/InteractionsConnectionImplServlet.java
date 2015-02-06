@@ -3,7 +3,7 @@ package org.geworkbench.components.interactions.cellularnetwork;
 import org.apache.log4j.Logger;
 
 import com.mchange.v2.c3p0.ComboPooledDataSource; 
-import java.beans.PropertyVetoException;
+//import java.beans.PropertyVetoException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,7 +18,7 @@ import java.sql.PreparedStatement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-import java.util.Date;
+//import java.util.Date;
 
 import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
@@ -64,23 +64,23 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static final String CLOSE_DB_CONNECTION = "closeDbConnection";
 	private static final String GET_NCI_DATASET_NAMES = "getNciDatasetNames";
 	private static final String GET_THROTTLE_VALUE = "getThrottleValue";
-	 
+	private static final String GET_EXPORT_FLAG = "getExportFlag";
 
 	private static final String SECONDARY_ACCESSION = "secondary_accession";
 
 	/**
 	 * Logger for this class
 	 */
-	private static final Logger logger = Logger
+	static final Logger logger = Logger
 			.getLogger(InteractionsConnectionImplServlet.class);
 
 	// currently in two files
-	static final int SPLIT_ALL = -2;
-	static final String DEL = "|";
+	private static final int SPLIT_ALL = -2;
+	private static final String DEL = "|";
 	private static final String REGEX_DEL = "\\|";
-	static final String ORACLE = "oracle";
-	static final String MYSQL = "mysql";
-	static final String PROPERTIES_FILE = "interactionsweb.properties";
+	private static final String ORACLE = "oracle";
+	private static final String MYSQL = "mysql";
+	private static final String PROPERTIES_FILE = "interactionsweb.properties";
 	private static final String MYSQL_JDBC_DRIVER = "mysql.jdbc.Driver";
 	private static final String MYSQL_USER = "mysql.user";
 	private static final String MYSQL_PASSWD = "mysql.passwd";
@@ -173,11 +173,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			if (logger.isDebugEnabled()) {
 				logger.debug("doPost(HttpServletRequest, HttpServletResponse) - InteractionsConnectionImplServlet doPost, you got here  ---"); //$NON-NLS-1$
 			}
-						 
-			/*java.lang.management.MemoryMXBean memoryBean = java.lang.management.ManagementFactory.getMemoryMXBean();
-		    long l = memoryBean.getHeapMemoryUsage().getMax();
-		    logger.info(l);
-		    logger.info("test: " + Runtime.getRuntime().maxMemory()); */
+			 
 		    
 			int len = req.getContentLength();
     
@@ -287,11 +283,15 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 					int versionId = getInteractomeVersionId(context, version,
 							conn, statement);
+					String shortName = getInteractionTypeShortName(interactionTypes, conn, statement);
 					InteractionsExport export = new InteractionsExport();
-					if (methodName
-							.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT))
+					String existFileName = export.getExportExistFileName(context, version, shortName, nodePresentedBy, methodName);
+					if (existFileName != null)
+						export.exportExistFile(existFileName, out);
+					else if (methodName
+							.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT))			 
 						export.getInteractionsSifFormat(versionId,
-								interactionTypes, nodePresentedBy, out, conn);
+								interactionTypes, shortName, nodePresentedBy, out, conn);					 
 					else
 						export.getInteractionsAdjFormat(versionId,
 								interactionTypes, nodePresentedBy, out, conn);
@@ -322,6 +322,10 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				} else if (methodName.equalsIgnoreCase(GET_VERSION_DESCRIPTOR)) {
 					String context = tokens[1].trim();
 					rs = this.getVersionDescriptor(context, conn, statement);
+				} else if (methodName.equalsIgnoreCase(GET_EXPORT_FLAG)) {
+					String context = tokens[1].trim();
+					String version = tokens[2].trim();
+					rs = this.getExportFlag(context, version, conn, statement);
 				} else if (methodName.equalsIgnoreCase(GET_THROTTLE_VALUE)) {
 					String geneSymbol = tokens[1].trim();
 					String context = tokens[2].trim();
@@ -550,8 +554,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 						"exception in catch block: doPost(HttpServletRequest, HttpServletResponse)", ioe); //$NON-NLS-1$
 			}
 
-		} finally {
-
+		} finally {			 
 			try {
 				if (statement != null)
 					statement.close();
@@ -681,6 +684,25 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return rs;
 	}
 
+	private String getInteractionTypeShortName(String interactionType, Connection conn,
+			PreparedStatement statement) throws SQLException {
+		String shortName = null;
+		String aSql = null;
+		aSql = "SELECT short_name FROM interaction_type where name = '" + interactionType + "'";;
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		while (rs.next()) {
+
+			// Get the data from the row using the column name
+			shortName = rs.getString("short_name");
+			break;
+		}
+		rs.close();
+		statement.close();
+		return shortName;
+	}
+	
+	
 	private ResultSet getInteractionEvidences(Connection conn,
 			PreparedStatement statement) throws SQLException {
 		String aSql = null;
@@ -749,6 +771,22 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return rs;
 	}
 
+	private ResultSet getExportFlag(String context, String version, Connection conn,
+			PreparedStatement statement) throws SQLException {
+		String aSql = null;
+
+		aSql = "SELECT i.name, v.version, v.export_yn as export_yn ";
+		aSql += "FROM interactome_version v, interactome i ";
+		aSql += "WHERE v.interactome_id=i.id ";		 
+		aSql += " AND i.name='" + context + "' ";
+		aSql += " AND v.version='" + version + "'";
+		 
+		statement = conn.prepareStatement(aSql);
+		ResultSet rs = statement.executeQuery();
+		return rs;
+	}
+	
+	
 	private ResultSet getInteractomeDescription(String interactomeName,
 			Connection conn, PreparedStatement statement) throws SQLException {
 		String aSql = null;
@@ -945,19 +983,20 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		String aSql = null;
 		String str = "";
 	 
-		logger.info("start EntrezId query ...");
+		logger.debug("start EntrezId query ...");
 	 
 		aSql = "SELECT interaction_id ";
 		aSql += "FROM interactions_joined_part ";	 
 		//aSql += "FROM partition_interactome_version ";	 
 		aSql += "WHERE interactome_version_id = " + interactomeVersionId;
-		aSql += " AND primary_accession = " + geneId;		 
+		//aSql += " AND (primary_accession = " + geneId + " OR gene_symbol = '" + geneSymbol + "') "; 		 
+		aSql += " AND primary_accession = " + geneId;
 		aSql += " UNION ";
 		aSql += "SELECT interaction_id ";
 		aSql += "FROM interactions_joined_part ";	
 		//aSql += "FROM partition_interactome_version ";	 
 		aSql += "WHERE (gene_symbol = '" + geneSymbol + "' AND primary_accession is null ) ";		 
-		aSql += "AND interactome_version_id = " + interactomeVersionId;		 		 
+		aSql += "AND interactome_version_id = " + interactomeVersionId;		 
 	 
 		Statement statement = conn.createStatement();
 		  
@@ -981,7 +1020,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		
 		logger.debug(aSql);
 
-		logger.debug("finist EntrezId query ...");
+		logger.info("finist EntrezId query ...");
 
 		int rowNum = 0;
 		while (rs.next()) {
@@ -1105,6 +1144,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		String str = "";
 		 
 		aSql = "SELECT ijp.interaction_id as interaction_id FROM interactions_joined_part ijp ";
+		//aSql = "SELECT ijp.interaction_id as interaction_id FROM partition_interactome_version ijp ";
 		aSql += "WHERE ijp.gene_symbol = '" + geneSymbol + "' ";
 		aSql += "AND ijp.interactome_version_id = " + interactomeVersionId + " ";
 		 
@@ -1303,11 +1343,11 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		
 		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId);
 	 
-		logger.info("start query ...");
-		logger.info(aSql);		 
+		logger.debug("start query ...");
+		logger.debug(aSql);		 
 		statement = conn.prepareStatement(aSql);	 
 		ResultSet rs = statement.executeQuery(); 
-		logger.info("after query ...");
+		logger.debug("after query ...");
 		
 		/*String aSql = null;
 		String qubSql = null;
@@ -1355,7 +1395,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 			interactionIdList = "0";	
 		
 		aSql = "SELECT ijp.primary_accession as primary_accession, ijp.secondary_accession as secondary_accession, ijp.interaction_id as interaction_id, ijp.accession_db as accession_db, ijp.gene_symbol as gene_symbol, ijp.interaction_type as interaction_type, ijp.evidence_id as evidence_id, ijp.confidence_value as confidence_value, ijp.confidence_type as confidence_type ";
-		aSql += "FROM interactions_joined_part ijp ";		 
+		//aSql += "FROM partition_interactome_version ijp ";	
+		aSql += "FROM interactions_joined_part ijp ";
 		aSql += "WHERE ijp.interaction_id in (" + interactionIdList + ") ";	 
 		aSql += "AND ijp.interactome_version_id = " + interactomeVersionId + " ";
 		aSql += "ORDER BY ijp.interaction_id"; 
@@ -1395,6 +1436,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return list;
 	}
 	 
-	
+    static void printMemoryUsage()
+	{		 
+		java.lang.management.MemoryMXBean memoryBean = java.lang.management.ManagementFactory.getMemoryMXBean();
+	   
+	    logger.info("init memory: "  + memoryBean.getHeapMemoryUsage().getInit());
+		logger.info("used memory: "  + memoryBean.getHeapMemoryUsage().getUsed());
+		logger.info("max memory: "  + memoryBean.getHeapMemoryUsage().getMax());
+	}
 
 }
