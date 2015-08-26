@@ -77,9 +77,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	// currently in two files
 	private static final int SPLIT_ALL = -2;
 	private static final String DEL = "|";
-	private static final String REGEX_DEL = "\\|";
-	private static final String ORACLE = "oracle";
-	private static final String MYSQL = "mysql";
+	private static final String REGEX_DEL = "\\|";	 
 	private static final String PROPERTIES_FILE = "interactionsweb.properties";
 	private static final String MYSQL_JDBC_DRIVER = "mysql.jdbc.Driver";
 	private static final String MYSQL_USER = "mysql.user";
@@ -272,18 +270,18 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 						.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT)
 						|| methodName
 								.equalsIgnoreCase(GET_INTERACTIONS_ADJ_FORMAT)) {
-					String interactionTypes = "ALL";
+					String interactionType = "ALL";
 					String nodePresentedBy = "GENE_NAME";
 					String context = tokens[1].trim();
 					String version = tokens[2].trim();
 					if (tokens.length == 5) {
-						interactionTypes = tokens[3].trim();
+						interactionType = tokens[3].trim();
 						nodePresentedBy = tokens[4].trim();
 					}
 
 					int versionId = getInteractomeVersionId(context, version,
 							conn, statement);
-					String shortName = getInteractionTypeShortName(interactionTypes, conn, statement);
+					String shortName = getInteractionTypeShortName(interactionType, conn, statement);
 					InteractionsExport export = new InteractionsExport();
 					String existFileName = export.getExportExistFileName(context, version, shortName, nodePresentedBy, methodName);
 					if (existFileName != null)
@@ -291,10 +289,10 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 					else if (methodName
 							.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT))			 
 						export.getInteractionsSifFormat(versionId,
-								interactionTypes, shortName, nodePresentedBy, out, conn);					 
+								interactionType, shortName, nodePresentedBy, out, conn);					 
 					else
 						export.getInteractionsAdjFormat(versionId,
-								interactionTypes, nodePresentedBy, out, conn);
+								interactionType, nodePresentedBy, out, conn);
 				} else if (methodName.equalsIgnoreCase(GET_INTERACTION_TYPES)) {
 					rs = this.getInteractionTypes(conn, statement);
 				} else if (methodName.equalsIgnoreCase(GET_CONFIDENCE_TYPES)) {
