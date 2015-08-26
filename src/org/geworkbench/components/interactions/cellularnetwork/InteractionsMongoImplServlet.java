@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
 
-import java.util.ArrayList;
+import java.util.ArrayList; 
 import java.util.List;
 import java.util.Properties;
 //import java.util.Date;
@@ -141,11 +141,9 @@ public class InteractionsMongoImplServlet extends HttpServlet {
 		String methodName = "";
 
 		Boolean isInteractionData = false;
-
+		PrintWriter out = null;
 		try {
-
-			PrintWriter out = resp.getWriter();
-
+			out = resp.getWriter();
 			if (logger.isDebugEnabled()) {
 				logger.debug("doPost(HttpServletRequest, HttpServletResponse) - InteractionsMongoImplServlet doPost, you got here  ---"); //$NON-NLS-1$
 			}
@@ -233,14 +231,18 @@ public class InteractionsMongoImplServlet extends HttpServlet {
 					}
 
 					int versionId = getInteractomeVersionId(context, version);
+					String shortName = getInteractionTypeShortName(interactionTypes, db);
 					InteractionsMongoExport export = new InteractionsMongoExport();
-					if (methodName
-							.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT))
+					String existFileName = export.getExportExistFileName(context, version, shortName, nodePresentedBy, methodName);
+					if (existFileName != null)
+						export.exportExistFile(existFileName, out);
+					else if (methodName
+							.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT))			 
 						export.getInteractionsSifFormat(versionId,
-								interactionTypes, nodePresentedBy, out, db);
+								interactionTypes, shortName, nodePresentedBy, out, db);
 					else
 						export.getInteractionsAdjFormat(versionId,
-								interactionTypes, nodePresentedBy, out, db);
+								interactionTypes, nodePresentedBy, out, db);				 
 					isInteractionData = true;
 				} else if (methodName.equalsIgnoreCase(GET_INTERACTION_TYPES)) {
 					rs = this.getInteractionTypes();
@@ -294,8 +296,7 @@ public class InteractionsMongoImplServlet extends HttpServlet {
 				}
 
 				out.flush();
-				out.close();
-
+				
 				resp.setStatus(HttpServletResponse.SC_OK);
 
 			}
@@ -333,6 +334,11 @@ public class InteractionsMongoImplServlet extends HttpServlet {
 				logger.error(
 						"exception in catch block: doPost(HttpServletRequest, HttpServletResponse)", ioe); //$NON-NLS-1$
 			}
+
+		}
+		finally{			 
+			if (out != null)
+			   out.close();
 
 		}
 	}
@@ -724,8 +730,8 @@ public class InteractionsMongoImplServlet extends HttpServlet {
 		if (output.results().iterator().hasNext() == false) {
 			logger.info("search by symbol");
 			whereQuery = new BasicDBObject();
-			whereQuery.put("interactome_version_id", interactomeVersionId);
 			whereQuery.put("gene_symbol", geneSymbol);
+			whereQuery.put("interactome_version_id", interactomeVersionId);			
 			match = new BasicDBObject("$match", whereQuery);
 			pipeline = Arrays.asList(match, project);
 			output = collection.aggregate(pipeline);
@@ -901,11 +907,11 @@ public class InteractionsMongoImplServlet extends HttpServlet {
 		int interactomeVersionId = getInteractomeVersionId(context, version);
 		List<Integer> interactionIdList = null;
 		logger.info("start id query ...");
-		if (context.contains("Preppi") || context.contains("MINT")
+		/*if (context.contains("Preppi") || context.contains("MINT")
 				|| context.contains("Reactome"))
 			interactionIdList = getInteractionIdsByGeneSymbol(geneSymbol,
 					interactomeVersionId);
-		else
+		else*/
 			interactionIdList = getInteractionIdsByEntrezIdOrGeneSymbol(
 					entrezId, geneSymbol, interactomeVersionId);
 		logger.info("start interaction query ...");
@@ -1050,6 +1056,30 @@ public class InteractionsMongoImplServlet extends HttpServlet {
 
 		return metaData;
 	}
+	
+	private String getInteractionTypeShortName(String interactionType, DB db) throws MongoException {
+ 
+		String shortName = null;
+		DBCollection collection = db.getCollection("interaction_type");
+		BasicDBObject whereQuery = new BasicDBObject();
+		whereQuery.put("name", interactionType);
+		DBObject match = new BasicDBObject("$match", whereQuery);
+		DBObject fields = new BasicDBObject();		 
+		fields.put("short_name", 1);
+		fields.put("_id", 0);
+		DBObject project = new BasicDBObject("$project", fields);
+		List<DBObject> pipeline = Arrays.asList(match, project);
+		AggregationOutput output = collection.aggregate(pipeline);
+		for (DBObject result : output.results()) {			 
+			  shortName = result.get("short_name").toString().trim();
+			  if (shortName != null && !shortName.trim().equals(""))
+				  return shortName;
+		}
+		
+		return interactionType;
+	}
+	
+	
 
 	static void printMemoryUsage() {
 		java.lang.management.MemoryMXBean memoryBean = java.lang.management.ManagementFactory

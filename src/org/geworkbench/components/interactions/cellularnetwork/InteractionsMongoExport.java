@@ -1,25 +1,33 @@
 package org.geworkbench.components.interactions.cellularnetwork;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
-
+  
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Map;
 
-import org.apache.log4j.Logger;
-
+import org.apache.log4j.Logger; 
+ 
 import com.mongodb.AggregationOutput; 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
+import com.mongodb.DBCursor;
 import com.mongodb.DBObject;
 import com.mongodb.MongoException;
 
 public class InteractionsMongoExport {
 
 	private static final String TARGET = "target";
-	private static final String MODULATOR = "modulator";
 
 	private static final String GENE_ID = "gene id";
 	private static final String GENE_NAME = "gene name";
@@ -29,136 +37,57 @@ public class InteractionsMongoExport {
 
 	private static final String EntrezIDPreferred = "Entrez ID Preferred";
 	private static final String GeneSymbolPreferred = "Gene Symbol Preferred";
+	private static final String GET_INTERACTIONS_SIF_FORMAT = "getInteractionsSifFormat";
 
+	private static String datafileDir = null;
 	/**
 	 * Logger for this class
 	 */
 	private static final Logger logger = Logger
-			.getLogger(InteractionsMongoExport.class);
+			.getLogger(InteractionsExport.class);
 
-	public void getInteractionsSifFormat(int versionId, String interactionType,
-			String presentBy, PrintWriter out, DB db) throws MongoException {
+	private static int TARGET_ROLE_ID = 0;
 
-		logger.info("Start exporting....");
-
-		if (presentBy.equalsIgnoreCase(GENE_NAME))
-			presentBy = GeneSymbolOnly;
-		else if (presentBy.equalsIgnoreCase(GENE_ID))
-			presentBy = EntrezIDPreferred;		
-	 
-		HashMap<String, String> interactionTypeMap = getInteractionTypeMap(db);
-        
-		List<GeneInfo> tfList = getRelatedInteractionGenes(versionId,
-				interactionType, presentBy, db);
-
-		out.println("sif format data");
-
-		for (GeneInfo tfGene : tfList) {
-
-			if (tfGene.gene == null || tfGene.gene.trim().equals("")
-					|| tfGene.gene.equalsIgnoreCase("UNKNOWN")) {
-				logger.info("drop gene ...." + tfGene);
-				continue;
-			}
-			logger.info("Start get ...." + tfGene.gene);
-			List<Integer> idList = getInteractionIds(tfGene, interactionType,
-					versionId, db);
-
-			/*
-			 * aSql =
-			 * "SELECT pe.primary_accession, pe.secondary_accession, pe.gene_symbol, it.short_name, r.name "
-			 * ; aSql +=
-			 * "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r "
-			 * ; aSql += "WHERE i.id in (" + idList + ") "; aSql +=
-			 * "AND pe.id=ip.participant_id "; aSql +=
-			 * "AND ip.interaction_id=i.id "; aSql +=
-			 * "AND i.interaction_type=it.id "; aSql +=
-			 * "AND ip.role_id = r.id "; aSql +=
-			 * "order by it.short_name, pe.gene_symbol";
-			 */
-
-			DBCollection collection = db.getCollection("interactions_denorm");
-			BasicDBObject fields = new BasicDBObject();
-			fields.put("primary_accession", 1);
-			fields.put("secondary_accession", 1);
-			fields.put("gene_symbol", 1);
-			fields.put("role_name", 1);
-			fields.put("interaction_type", 1);
-			fields.put("_id", 0);
-			DBObject project = new BasicDBObject("$project", fields);
-
-			boolean hasData = false;
-
-			DBObject inQuery = new BasicDBObject();
-			inQuery.put("interaction_id", new BasicDBObject("$in", idList));
-			DBObject match = new BasicDBObject("$match", inQuery);
-			DBObject sortFields = new BasicDBObject("interaction_type", 1);
-			sortFields.put("gene_symbol", 1);
-			DBObject sort = new BasicDBObject("$sort", sortFields);
-			List<DBObject> pipeline = Arrays.asList(match, project, sort);
-			AggregationOutput output = collection.aggregate(pipeline);
-			logger.info("End get ...." + tfGene.gene);
-
-			String targetGene = null;
-			String shortName = null;
-			String previousShortName = null;
-			String roleName = null;
-
-			for (DBObject result : output.results()) {
-				if (presentBy.equalsIgnoreCase(GeneSymbolOnly)) {
-					targetGene = result.get("gene_symbol").toString();
-				} else if (presentBy.equalsIgnoreCase(GeneSymbolPreferred)) {
-					targetGene = result.get("gene_symbol").toString();
-					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.trim().equalsIgnoreCase("UNKNOWN"))
-						targetGene = result.get("primary_accession").toString();
-					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.trim().equalsIgnoreCase("UNKNOWN"))
-						targetGene = result.get("secondary_accession")
-								.toString();
-				} else if (presentBy.equalsIgnoreCase(EntrezIDOnly))
-					targetGene = result.get("primary_accession").toString();
-				else if (presentBy.equalsIgnoreCase(EntrezIDPreferred)) {
-					targetGene = result.get("primary_accession").toString();
-					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.trim().equalsIgnoreCase("UNKNOWN"))
-						targetGene = result.get("secondary_accession")
-								.toString();
-				}
-
-				shortName = interactionTypeMap.get(result.get("interaction_type").toString());
-				roleName = result.get("name").toString();
-
-				if (targetGene == null || targetGene.equals(tfGene.gene)
-						|| targetGene.trim().equalsIgnoreCase("UNKNOWN")
-						|| roleName.equals(MODULATOR))
-					continue;
-				if (previousShortName == null) {
-					hasData = true;
-					out.print(tfGene.gene + "\t" + shortName + "\t"
-							+ targetGene);
-				} else if (previousShortName.equalsIgnoreCase(shortName)) {
-					out.print("\t" + targetGene);
-				} else {
-					out.println();
-					out.print(tfGene.gene + "\t" + shortName + "\t"
-							+ targetGene);
-
-				}
-				previousShortName = shortName;
-
-			}
-
-			if (hasData)
-				out.println();
-
-		}
-
-		logger.info("End exporting....");
+	static {
+		datafileDir = System.getProperty("user.home")
+				+ System.getProperty("file.separator") + "cnkb_export_data"
+				+ System.getProperty("file.separator");
 	}
 
-	public void getInteractionsAdjFormat(int versionId, String interactionType,
-			String presentBy, PrintWriter out, DB db) throws MongoException {
+	public void exportExistFile(String fileName, PrintWriter out) {
+		logger.info("Start export existing file ......");
+		File inDocFile = new File(fileName);
+		InputStream inStream = null;
+		if (fileName.endsWith("adj"))
+			out.println("adj format data");
+		else
+			out.println("sif format data");
+		try {
+			inStream = new FileInputStream(inDocFile);
+			 BufferedReader br=new BufferedReader(new InputStreamReader(inStream));
+			 String line = br.readLine();
+			while (line != null) {
+				out.println(line);
+				line =  br.readLine();
+			}
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally {
+			try {
+				inStream.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+
+		logger.info("End export existing file ......");
+	}
+
+	public void getInteractionsSifFormat(int versionId, String interactionType,
+			String shortName, String presentBy, PrintWriter out, DB db)
+			throws MongoException {
 
 		logger.info("Start exporting....");
 
@@ -167,406 +96,477 @@ public class InteractionsMongoExport {
 		else if (presentBy.equalsIgnoreCase(GENE_ID))
 			presentBy = EntrezIDPreferred;
 
-		List<GeneInfo> tfList = getRelatedInteractionGenes(versionId,
-				interactionType, presentBy, db);
+		loadTargetRoleId(db);
 
-		out.println("adj format data");
+		out.println("sif format data");
+		if (presentBy.endsWith("Only"))
+			processSifListByOnly(versionId, interactionType, presentBy,
+					shortName, out, db);
+		else
+			processSifListByPreferred(versionId, interactionType, presentBy,
+					shortName, out, db);
 
-		for (GeneInfo tfGene : tfList) {
-
-			if (tfGene.gene == null || tfGene.gene.trim().equals("")
-					|| tfGene.gene.equalsIgnoreCase("UNKNOWN")) {
-				logger.info("drop gene ...." + tfGene);
-				continue;
-			}
-			logger.debug("Start get ...." + tfGene.gene);
-			List<Integer> idList = getInteractionIds(tfGene, interactionType,
-					versionId, db);
-			logger.debug("get idlist");
-			/*
-			 * aSql =
-			 * "SELECT pe.primary_accession, pe.secondary_accession, pe.gene_symbol, r.name, ic.score "
-			 * ; aSql +=
-			 * "FROM (physical_entity pe, interaction_participant ip, interaction i,role r) "
-			 * ; aSql +=
-			 * "left join interaction_confidence ic on (i.id=ic.interaction_id) "
-			 * ; aSql += "WHERE i.id in (" + idList + ") "; aSql +=
-			 * "AND pe.id=ip.participant_id "; aSql +=
-			 * "AND ip.interaction_id=i.id "; aSql += "AND ip.role_id = r.id ";
-			 * aSql += "order by pe.gene_symbol";
-			 */
-
-			DBCollection collection = db.getCollection("interactions_denorm");
-			BasicDBObject fields = new BasicDBObject();
-			fields.put("primary_accession", 1);
-			fields.put("secondary_accession", 1);
-			fields.put("gene_symbol", 1);
-			fields.put("role_name", 1);
-			fields.put("confidence_value", 1);
-			fields.put("_id", 0);
-			DBObject project = new BasicDBObject("$project", fields);
-			DBObject inQuery = new BasicDBObject();
-			inQuery.put("interaction_id", new BasicDBObject("$in", idList));
-			DBObject match = new BasicDBObject("$match", inQuery);
-
-			DBObject sort = new BasicDBObject("$sort", new BasicDBObject(
-					"gene_symbol", 1));
-			List<DBObject> pipeline = Arrays.asList(match, project, sort);
-			AggregationOutput output = collection.aggregate(pipeline);
-
-			String targetGene = null;
-			String confidence = null;
-			String roleName = null;
-			boolean hasData = false;
-
-			for (DBObject result : output.results()) {
-
-				if (presentBy.equalsIgnoreCase(GeneSymbolOnly)) {
-					targetGene = result.get("gene_symbol").toString();
-				} else if (presentBy.equalsIgnoreCase(GeneSymbolPreferred)) {
-					targetGene = result.get("gene_symbol").toString();
-					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.equalsIgnoreCase("UNKNOWN"))
-						targetGene = result.get("primary_accession").toString();
-					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.equalsIgnoreCase("UNKNOWN"))
-						targetGene = result.get("secondary_accession")
-								.toString();
-				} else if (presentBy.equalsIgnoreCase(EntrezIDOnly))
-					targetGene = result.get("primary_accession").toString();
-				else if (presentBy.equalsIgnoreCase(EntrezIDPreferred)) {
-					targetGene = result.get("primary_accession").toString();
-					if (targetGene == null || targetGene.trim().equals("")
-							|| targetGene.equalsIgnoreCase("UNKNOWN"))
-						targetGene = result.get("secondary_accession")
-								.toString();
-				}
-
-				roleName = result.get("name").toString();
-
-				if (targetGene == null || targetGene.trim().equals("")
-						|| targetGene.trim().equalsIgnoreCase("UNKNOWN")
-						|| targetGene.equals(tfGene.gene)
-						|| roleName.equals(MODULATOR))
-					continue;
-
-				confidence = result.get("score").toString();
-				if (hasData == false) {
-					out.print(tfGene.gene + "\t" + targetGene + "\t"
-							+ confidence);
-					hasData = true;
-				} else
-					out.print("\t" + targetGene + "\t" + confidence);
-
-			}
-			if (hasData)
-				out.println();
-
-		}
-
+		 
 		logger.info("End exporting....");
 	}
 
-	private List<GeneInfo> getRelatedInteractionGenes(int versionId,
-			String interactionType, String presentBy, DB db)
+	public void getInteractionsAdjFormat(int versionId, String interactionType,
+			String presentBy, PrintWriter out, DB db)
 			throws MongoException {
 
-		if (presentBy.equalsIgnoreCase(EntrezIDPreferred))
-			return getRelatedGenesByEntrezIdPref(versionId, interactionType, db);
-		else if (presentBy.equalsIgnoreCase(GeneSymbolPreferred))
-			return getRelatedGenesBySymbolPref(versionId, interactionType, db);
-		else if (presentBy.equalsIgnoreCase(EntrezIDOnly))
-			return getRelatedGenesByEntrezIdOnly(versionId, interactionType, db);
+		logger.info("Start exporting....");
+
+		if (presentBy.equalsIgnoreCase(GENE_NAME))
+			presentBy = GeneSymbolOnly;
+		else if (presentBy.equalsIgnoreCase(GENE_ID))
+			presentBy = EntrezIDPreferred;
+
+		loadTargetRoleId(db);
+		out.println("adj format data");
+		if (presentBy.endsWith("Only"))
+			processAdjListByOnly(versionId, interactionType, presentBy, out,
+					db);
 		else
-			return getRelatedGenesBySymbolOnly(versionId, interactionType, db);
-
+			processAdjListByPreferred(versionId, interactionType, presentBy,
+					out, db);
+		 
+		logger.info("End exporting....");
 	}
 
-	private List<GeneInfo> getRelatedGenesBySymbolOnly(int versionId,
-			String interactionType, DB db) throws MongoException {
-
-		List<GeneInfo> tfList = new ArrayList<GeneInfo>();
-
-		/*
-		 * aSql = "SELECT pe.gene_symbol, it.short_name "; aSql +=
-		 * "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r "
-		 * ; aSql += "WHERE pe.id=ip.participant_id "; aSql +=
-		 * "AND ip.interaction_id=i.id "; aSql +=
-		 * "AND i.id = iiv.interaction_id "; aSql += "AND r.name <> '" + TARGET
-		 * + "' "; aSql += "AND ip.role_id = r.id "; aSql +=
-		 * "And iiv.interactome_version_id = " + versionId + " "; if
-		 * (!interactionType.equalsIgnoreCase("ALL")) { aSql +=
-		 * "AND it.id = i.interaction_type "; aSql += "and it.name ='" +
-		 * interactionType + "' "; } aSql += "group by pe.gene_symbol";
-		 */
-
-		DBCollection collection = db.getCollection("interactions_denorm");
-
-		BasicDBObject whereQuery = new BasicDBObject();
-		whereQuery.put("interactome_version_id", versionId);
-		if (!interactionType.equalsIgnoreCase("ALL"))
-			whereQuery.put("interaction_type", interactionType);
-		whereQuery.put("role_name", new BasicDBObject("$ne", TARGET));
-		DBObject match = new BasicDBObject("$match", whereQuery);
-		BasicDBObject fields = new BasicDBObject();
-		fields.put("gene_symbol", 1);
-		fields.put("_id", 0);
-		DBObject project = new BasicDBObject("$project", fields);
-		DBObject groupIdFields = new BasicDBObject( "_id", "$gene_symbol");
-		DBObject groupObject = new BasicDBObject("$addToSet",
-				"$gene_symbol");
-		groupIdFields.put("gene_symbol", groupObject);
-		DBObject group = new BasicDBObject("$group", groupIdFields);
-		List<DBObject> pipeline = Arrays.asList(match, project, group);
-		AggregationOutput output = collection.aggregate(pipeline);
-
-		for (DBObject result : output.results()) {
-			String gene = result.get("gene_symbol").toString();
-			tfList.add(new GeneInfo(gene));
-		}
-
-		return tfList;
-	}
-
-	private List<GeneInfo> getRelatedGenesBySymbolPref(int versionId,
-			String interactionType, DB db) throws MongoException {
-
-		List<GeneInfo> tfList = null;
-
-		tfList = getRelatedGenesBySymbolOnly(versionId, interactionType, db);
-
-		/*
-		 * aSql =
-		 * "SELECT pe.primary_accession, pe.secondary_accession, it.short_name "
-		 * ; aSql +=
-		 * "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r "
-		 * ; aSql += "WHERE " +
-		 * "(pe.gene_symbol is null OR pe.gene_symbol='UNKNOWN') "; aSql +=
-		 * "AND pe.id=ip.participant_id "; aSql +=
-		 * "AND ip.interaction_id=i.id "; aSql +=
-		 * "AND i.id = iiv.interaction_id "; aSql += "AND r.name <> '" + TARGET
-		 * + "' "; aSql += "AND ip.role_id = r.id "; aSql +=
-		 * "And iiv.interactome_version_id = " + versionId + " "; if
-		 * (!interactionType.equalsIgnoreCase("ALL")) { aSql +=
-		 * "AND it.id = i.interaction_type "; aSql += "and it.name ='" +
-		 * interactionType + "' "; } aSql +=
-		 * "group by pe.primary_accession, pe.secondary_accession";
-		 */
-
+	private void processAdjListByOnly(int versionId, String interactionType,
+			String presentBy, PrintWriter out, DB db)
+			throws MongoException {
+	
 		DBCollection collection = db.getCollection("interactions_denorm");
 		BasicDBObject whereQuery = new BasicDBObject();
 		whereQuery.put("interactome_version_id", versionId);
-		whereQuery.put("gene_symbol", new BasicDBObject("$exists", "false"));
 		if (!interactionType.equalsIgnoreCase("ALL"))
-			whereQuery.put("interaction_type", interactionType);
-		whereQuery.put("role_name", new BasicDBObject("$not", TARGET));
-		DBObject match = new BasicDBObject("$match", whereQuery);
-		BasicDBObject fields = new BasicDBObject();
-		fields.put("primary_accession", 1);
-		fields.put("secondary_accession", 1);
-		fields.put("_id", 0);
-		DBObject project = new BasicDBObject("$project", fields);
-		DBObject groupIdFields = new BasicDBObject("primary_accession",
-				"$primary_accession");
-		groupIdFields.put("secondary_accession", "$secondary_accession");
-		DBObject group = new BasicDBObject("$group", groupIdFields);
-		List<DBObject> pipeline = Arrays.asList(match, project, group);
-		AggregationOutput output = collection.aggregate(pipeline);
-
-		if (tfList == null)
-			tfList = new ArrayList<GeneInfo>();
-
-		for (DBObject result : output.results()) {
-			String gene = result.get("primary_accession").toString();
-			if (gene == null || gene.trim().equals("")
-					|| gene.trim().equals("null"))
-				tfList.add(new GeneInfo(result.get("secondary_accession")
-						.toString(), false));
-			else
-				tfList.add(new GeneInfo(gene, true));
-		}
-
-		return tfList;
-	}
-
-	private List<GeneInfo> getRelatedGenesByEntrezIdOnly(int versionId,
-			String interactionType, DB db) throws MongoException {
-
-		List<GeneInfo> tfList = new ArrayList<GeneInfo>();
-
-		/*
-		 * aSql = "SELECT pe.primary_accession,it.short_name "; aSql +=
-		 * "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r "
-		 * ; aSql += "WHERE pe.primary_accession is not null "; aSql +=
-		 * "AND pe.id=ip.participant_id "; aSql +=
-		 * "AND ip.interaction_id=i.id "; aSql +=
-		 * "AND i.id = iiv.interaction_id "; aSql += "AND r.name <> '" + TARGET
-		 * + "' "; aSql += "AND ip.role_id = r.id "; aSql +=
-		 * "And iiv.interactome_version_id = " + versionId + " "; if
-		 * (!interactionType.equalsIgnoreCase("ALL")) { aSql +=
-		 * "AND it.id = i.interaction_type "; aSql += "and it.name ='" +
-		 * interactionType + "' "; }
-		 * 
-		 * aSql += "group by pe.primary_accession ";
-		 */
-
-		DBCollection collection = db.getCollection("interactions_denorm");
-
-		BasicDBObject whereQuery = new BasicDBObject();
-		whereQuery.put("interactome_version_id", versionId);
-		if (!interactionType.equalsIgnoreCase("ALL"))
-			whereQuery.put("interaction_type", interactionType);
-		whereQuery.put("role_name", new BasicDBObject("$not", TARGET));
-		DBObject match = new BasicDBObject("$match", whereQuery);
-		BasicDBObject fields = new BasicDBObject();
-		fields.put("primary_accession", 1);
-		fields.put("_id", 0);
-		DBObject project = new BasicDBObject("$project", fields);
-		DBObject groupIdFields = new BasicDBObject("primary_accession",
-				"$primary_accession");
-		DBObject group = new BasicDBObject("$group", groupIdFields);
-		List<DBObject> pipeline = Arrays.asList(match, project, group);
-		AggregationOutput output = collection.aggregate(pipeline);
-
-		for (DBObject result : output.results()) {
-			String gene = result.get("primary_accession").toString();
-			tfList.add(new GeneInfo(gene, true));
-		}
-
-		return tfList;
-	}
-
-	private List<GeneInfo> getRelatedGenesByEntrezIdPref(int versionId,
-			String interactionType, DB db) throws MongoException {
-
-		List<GeneInfo> tfList = null;
-
-		tfList = getRelatedGenesByEntrezIdOnly(versionId, interactionType, db);
-
-		/*
-		 * aSql = "SELECT pe.secondary_accession, it.short_name "; aSql +=
-		 * "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it, role r "
-		 * ; aSql += "WHERE  pe.secondary_accession is not null "; aSql +=
-		 * "AND pe.id=ip.participant_id "; aSql +=
-		 * "AND ip.interaction_id=i.id "; aSql +=
-		 * "AND i.id = iiv.interaction_id "; aSql += "AND r.name <> '" + TARGET
-		 * + "' "; aSql += "AND ip.role_id = r.id "; aSql +=
-		 * "And iiv.interactome_version_id = " + versionId + " "; if
-		 * (!interactionType.equalsIgnoreCase("ALL")) { aSql +=
-		 * "AND it.id = i.interaction_type "; aSql += "and it.name ='" +
-		 * interactionType + "' "; } aSql += "group by pe.secondary_accession";
-		 */
-
-		DBCollection collection = db.getCollection("interactions_denorm");
-
-		BasicDBObject whereQuery = new BasicDBObject();
-		whereQuery.put("interactome_version_id", versionId);
-		whereQuery.put("secondary_accession", new BasicDBObject("$exists",
-				"true"));
-		if (!interactionType.equalsIgnoreCase("ALL"))
-			whereQuery.put("interaction_type", interactionType);
-		whereQuery.put("role_name", new BasicDBObject("$not", TARGET));
-		DBObject match = new BasicDBObject("$match", whereQuery);
-		BasicDBObject fields = new BasicDBObject();
-		fields.put("secondary_accession", 1);
-		fields.put("_id", 0);
-		DBObject project = new BasicDBObject("$project", fields);
-		DBObject groupIdFields = new BasicDBObject("secondary_accession",
-				"$secondary_accession");
-		DBObject group = new BasicDBObject("$group", groupIdFields);
-		List<DBObject> pipeline = Arrays.asList(match, project, group);
-		AggregationOutput output = collection.aggregate(pipeline);
-
-		if (tfList == null)
-			tfList = new ArrayList<GeneInfo>();
-
-		for (DBObject result : output.results()) {
-			String gene = result.get("secondary_accession").toString();
-			tfList.add(new GeneInfo(gene, false));
-		}
-
-		return tfList;
-	}
-
-	private List<Integer> getInteractionIds(GeneInfo tfGene,
-			String interactionType, int versionId, DB db) throws MongoException {
-
-		/*
-		 * aSql = "SELECT i.id "; aSql +=
-		 * "FROM interaction_interactome_version iiv, physical_entity pe, interaction_participant ip, interaction i, interaction_type it "
-		 * ; aSql += "WHERE pe." + colName + " = ? "; aSql +=
-		 * "AND iiv.interactome_version_id = ? "; if
-		 * (!interactionType.equalsIgnoreCase("ALL")) { aSql += "and it.name ='"
-		 * + interactionType + "' "; aSql += "AND it.id = i.interaction_type ";
-		 * } aSql += "AND ip.interaction_id=i.id "; aSql +=
-		 * "AND i.id = iiv.interaction_id "; aSql +=
-		 * "AND pe.id=ip.participant_id  ";
-		 */
-
-		DBCollection collection = db.getCollection("interactions_denorm");
-
-		BasicDBObject whereQuery = new BasicDBObject();
-		whereQuery.put("interactome_version_id", versionId);
-
-		if (tfGene.isPrimary == null)
-			whereQuery.put("gene_symbol", tfGene.gene);
-		else if (tfGene.isPrimary.booleanValue() == true)
-			whereQuery.put("primary_accession", tfGene.gene);
-		else
-			whereQuery.put("secondary_accession", tfGene.gene);
-		if (!interactionType.equalsIgnoreCase("ALL"))
-			whereQuery.put("interaction_type", interactionType);
-		DBObject match = new BasicDBObject("$match", whereQuery);
+			whereQuery.put("interaction_type", interactionType);		 
+	 
 		BasicDBObject fields = new BasicDBObject();
 		fields.put("interaction_id", 1);
+		if (presentBy.equalsIgnoreCase(EntrezIDOnly))
+			fields.put("primary_accession", 1);
+		else
+			fields.put("gene_symbol", 1);
+		fields.put("confidence_value", 1);
+		fields.put("role_name", 1);
 		fields.put("_id", 0);
-		DBObject project = new BasicDBObject("$project", fields);
-		List<DBObject> pipeline = Arrays.asList(match, project);
-		AggregationOutput output = collection.aggregate(pipeline);
+		 
+		
+	    DBCursor dbCursor = collection.find(whereQuery, fields).sort(new BasicDBObject(
+	     	"interaction_id", 1));		
+		 
+		Map<String, List<GeneInfo>> iteractionMap = new HashMap<String, List<GeneInfo>>();		
+		int previousInteractionId = 0;
+		List<GeneInfo> geneList = new ArrayList<GeneInfo>(3);	 
+		while (dbCursor.hasNext()) {
+			DBObject result = dbCursor.next();	
+			String gene = null;
+			if (presentBy.equalsIgnoreCase(EntrezIDOnly))
+				gene = result.get("primary_accession").toString();
+			else
+				gene = result.get("gene_symbol").toString();
+			if (gene == null || gene.trim().equals("null") || gene.trim().equals("\\N") 
+					|| gene.trim().equals("")
+					|| gene.trim().equalsIgnoreCase("UNKNOWN"))
+				continue;
+			int currentInteractionId = ((Number)result.get("interaction_id")).intValue();
+			int role = ((Number)result.get("role_name")).intValue();
+			Float cValue = new Float(result.get("confidence_value").toString());
+			if (previousInteractionId != currentInteractionId) {
+				if (geneList.size() > 1) {
+					processOneInteraction(iteractionMap, geneList);
+				}
 
-		List<Integer> idList = new ArrayList<Integer>();
-		for (DBObject result : output.results()) {
-			Integer id = new Integer(result.get("interaction_id").toString());
-			idList.add(id);
+				geneList.clear();
+				previousInteractionId = currentInteractionId;
+				geneList.add(new GeneInfo(gene, cValue, role));
 
+			} else {
+				geneList.add(new GeneInfo(gene, cValue, role));
+
+			}
+ 
 		}
 
-		return idList;
-	}
-
-	private class GeneInfo {
-		String gene = null;
-		Boolean isPrimary = null;
-
-		GeneInfo(String gene, Boolean isPrimary) {
-			this.gene = gene;
-			this.isPrimary = isPrimary;
+		if (geneList.size() > 1) {
+			processOneInteraction(iteractionMap, geneList);
+		}
+		if (iteractionMap.size() > 0) {
+			sendAdjInteractions(iteractionMap, out);
 		}
 
-		GeneInfo(String gene) {
-			this.gene = gene;
-			this.isPrimary = null;
-		}
+		 
 	}
 	
-	private HashMap<String, String> getInteractionTypeMap(DB db) throws MongoException {
+	 
 
-		HashMap<String, String> interactionTypeMap = new HashMap<String, String>();
-		DBCollection collection = db.getCollection("interaction_type");
-		DBObject fields = new BasicDBObject();
-		fields.put("interaction_type", "$name");
-		fields.put("short_name", 1);
+	private void processAdjListByPreferred(int versionId,
+			String interactionType, String presentBy, PrintWriter out,
+			DB db) throws MongoException {
+		
+		DBCollection collection = db.getCollection("interactions_denorm");
+		BasicDBObject whereQuery = new BasicDBObject();
+		whereQuery.put("interactome_version_id", versionId);
+		if (!interactionType.equalsIgnoreCase("ALL"))
+			whereQuery.put("interaction_type", interactionType);
+	 	
+		BasicDBObject fields = new BasicDBObject();
+		fields.put("interaction_id", 1);	 
+		fields.put("primary_accession", 1);
+		fields.put("secondary_accession", 1);		
+		fields.put("gene_symbol", 1);
+		fields.put("confidence_value", 1);
+		fields.put("role_name", 1);
+		fields.put("_id", 0);		
+	    DBCursor dbCursor = collection.find(whereQuery, fields).sort(new BasicDBObject(
+	     	"interaction_id", 1));
+		
+		Map<String, List<GeneInfo>> iteractionMap = new HashMap<String, List<GeneInfo>>();		 
+		int previousInteractionId = 0;
+		List<GeneInfo> geneList = new ArrayList<GeneInfo>(3);		 
+		while (dbCursor.hasNext()) {
+			DBObject result = dbCursor.next();	
+			String gene = null;
+			if (presentBy.equalsIgnoreCase(EntrezIDPreferred)) {
+				gene = result.get("primary_accession").toString();
+				if (gene.trim().equals("") || gene.trim().equals("\\N")
+						|| gene.trim().equals("null")
+						|| gene.equalsIgnoreCase("UNKNOWN"))
+					gene = result.get("gene_symbol").toString();
+				if (gene == null || gene.trim().equals("") || gene.trim().equals("\\N")
+						|| gene.trim().equals("null")
+						|| gene.equalsIgnoreCase("UNKNOWN"))
+					gene = result.get("secondary_accession").toString();
+			} else {
+				gene = result.get("gene_symbol").toString();
+				if (gene.trim().equals("") || gene.trim().equals("\\N")
+						|| gene.trim().equals("null")
+						|| gene.equalsIgnoreCase("UNKNOWN"))
+					gene = result.get("primary_accession").toString();
+				if (gene == null || gene.trim().equals("") || gene.trim().equals("\\N")
+						|| gene.trim().equals("null")
+						|| gene.equalsIgnoreCase("UNKNOWN"))
+					gene = result.get("secondary_accession").toString();
+			}
+
+			if (gene == null || gene.trim().equals("")
+					|| gene.trim().equals("null")
+					|| gene.equalsIgnoreCase("UNKNOWN"))
+				continue;
+
+			int currentInteractionId = ((Number)result.get("interaction_id")).intValue();
+			int role = (Integer)result.get("role_name");
+			Float cValue = new Float(result.get("confidence_value").toString());
+			if (previousInteractionId != currentInteractionId) {
+				if (geneList.size() > 1) {
+					processOneInteraction(iteractionMap, geneList);
+				}
+
+				geneList.clear();
+				previousInteractionId = currentInteractionId;
+				geneList.add(new GeneInfo(gene, cValue, role));
+
+			} else {
+				geneList.add(new GeneInfo(gene, cValue, role));
+			}
+			 
+		}
+
+		if (geneList.size() > 1) {
+			processOneInteraction(iteractionMap, geneList);
+		}
+		if (iteractionMap.size() > 0) {
+			sendAdjInteractions(iteractionMap, out);
+		}	 
+	}
+
+	private void processSifListByOnly(int versionId, String interactionType,
+			String presentBy, String shortName, PrintWriter out,
+			DB db) throws MongoException {		
+
+		DBCollection collection = db.getCollection("interactions_denorm");
+		BasicDBObject whereQuery = new BasicDBObject();
+		whereQuery.put("interactome_version_id", versionId);		 
+		whereQuery.put("interaction_type", interactionType);	 	
+		BasicDBObject fields = new BasicDBObject();
+		fields.put("interaction_id", 1);
+		if (presentBy.equalsIgnoreCase(EntrezIDOnly))
+			fields.put("primary_accession", 1);
+		else
+			fields.put("gene_symbol", 1);		 
+		fields.put("role_name", 1);
 		fields.put("_id", 0);
-		DBObject project = new BasicDBObject("$project", fields);
-		List<DBObject> pipeline = Arrays.asList(project);
-		AggregationOutput output = collection.aggregate(pipeline);
-		for (DBObject result : output.results()) {
-			String interactionType = result.get("interaction_type").toString().trim();
-			String short_name = result.get("short_name").toString().trim();
-			interactionTypeMap.put(interactionType, short_name);
+		
+		DBCursor dbCursor = collection.find(whereQuery, fields).sort(new BasicDBObject(
+			     	"interaction_id", 1));		 
+		Map<String, List<GeneInfo>> iteractionMap = new HashMap<String, List<GeneInfo>>();	 
+		int previousInteractionId = 0;
+		List<GeneInfo> geneList = new ArrayList<GeneInfo>(3);
+	 
+		while (dbCursor.hasNext()) {
+			DBObject result = dbCursor.next();	
+			String gene = null;
+			if (presentBy.equalsIgnoreCase(EntrezIDOnly))
+				gene = result.get("primary_accession").toString();
+			else
+				gene = result.get("gene_symbol").toString();
+			if (gene == null || gene.trim().equals("null") || gene.trim().equals("\\N")
+					|| gene.trim().equals("")
+					|| gene.trim().equalsIgnoreCase("UNKNOWN"))
+				continue;
+			int currentInteractionId = ((Number)result.get("interaction_id")).intValue();
+			int role = (Integer)result.get("role_name");
+
+			if (previousInteractionId != currentInteractionId) {
+				if (geneList.size() > 1) {
+					processOneInteraction(iteractionMap, geneList);
+				}
+				geneList.clear();
+				previousInteractionId = currentInteractionId;
+				geneList.add(new GeneInfo(gene, 0, role));
+			} else {
+				geneList.add(new GeneInfo(gene, 0, role));
+
+			} 
+
+		}
+
+		if (geneList.size() > 1) {
+			processOneInteraction(iteractionMap, geneList);
+		}
+		if (iteractionMap.size() > 0) {
+			sendSifInteractions(iteractionMap, shortName, out);
+		}
+ 
+	}
+
+	private void processSifListByPreferred(int versionId,
+			String interactionType, String presentBy, String shortName,
+			PrintWriter out, DB db) throws MongoException {
+		
+		DBCollection collection = db.getCollection("interactions_denorm");
+		BasicDBObject whereQuery = new BasicDBObject();
+		whereQuery.put("interactome_version_id", versionId);	 
+		whereQuery.put("interaction_type", interactionType);
+		 
+		BasicDBObject fields = new BasicDBObject();
+		fields.put("interaction_id", 1);	 
+		fields.put("primary_accession", 1);
+		fields.put("secondary_accession", 1);		
+		fields.put("gene_symbol", 1);		 
+		fields.put("role_name", 1);
+		fields.put("_id", 0);
+		
+	    DBCursor dbCursor = collection.find(whereQuery, fields).sort(new BasicDBObject(
+	     	"interaction_id", 1));
+		 
+		Map<String, List<GeneInfo>> iteractionMap = new HashMap<String, List<GeneInfo>>(); 
+		int previousInteractionId = 0;
+		List<GeneInfo> geneList = new ArrayList<GeneInfo>(3);	 
+		while (dbCursor.hasNext()) {
+			DBObject result = dbCursor.next();	
+			String gene = null;
+			if (presentBy.equalsIgnoreCase(EntrezIDPreferred)) {
+				gene = result.get("primary_accession").toString();
+				if (gene == null || gene.trim().equals("") || gene.trim().equals("\\N")
+						|| gene.trim().equals("null")
+						|| gene.equalsIgnoreCase("UNKNOWN"))
+					gene = result.get("gene_symbol").toString();
+				if (gene == null || gene.trim().equals("") || gene.trim().equals("\\N")
+						|| gene.trim().equals("null")
+						|| gene.equalsIgnoreCase("UNKNOWN"))
+					gene = result.get("secondary_accession").toString();
+			} else {
+
+				gene = result.get("gene_symbol").toString();
+				if (gene == null || gene.trim().equals("")
+						|| gene.trim().equals("null")
+						|| gene.equalsIgnoreCase("UNKNOWN"))
+					gene = result.get("primary_accession").toString();
+				if (gene == null || gene.trim().equals("")
+						|| gene.trim().equals("null")
+						|| gene.equalsIgnoreCase("UNKNOWN"))
+					gene = result.get("secondary_accession").toString();
+			}
+
+			if (gene == null || gene.trim().equals("")
+					|| gene.trim().equals("null")
+					|| gene.equalsIgnoreCase("UNKNOWN"))
+				continue;
+
+			int currentInteractionId = ((Number)result.get("interaction_id")).intValue();
+			int role = (Integer)result.get("role_name");
+			if (previousInteractionId != currentInteractionId) {
+				if (geneList.size() > 1) {
+					processOneInteraction(iteractionMap, geneList);
+				}
+
+				geneList.clear();
+				previousInteractionId = currentInteractionId;
+				geneList.add(new GeneInfo(gene, 0, role));
+			} else {
+				geneList.add(new GeneInfo(gene, 0, role));
+
+			}
+ 
+		}
+
+		if (geneList.size() > 1) {
+			processOneInteraction(iteractionMap, geneList);
+		}
+		if (iteractionMap.size() > 0) {
+			sendSifInteractions(iteractionMap, shortName, out);
+		}
+ 
+
+	}
+
+	private void sendAdjInteractions(Map<String, List<GeneInfo>> iteractionMap,
+			PrintWriter out) {
+		InteractionsConnectionImplServlet.printMemoryUsage();
+		List<String> keyList = new ArrayList<String>(iteractionMap.keySet());
+		Collections.sort(keyList, String.CASE_INSENSITIVE_ORDER);
+		for (int i = 0; i < keyList.size(); i++) {
+			List<GeneInfo> itList = iteractionMap.get(keyList.get(i));
+			out.print(keyList.get(i));
+			for (int j = 0; j < itList.size(); j++) {
+				out.print("\t" + itList.get(j).gene + "\t"
+						+ itList.get(j).confidence);
+			}
+			out.println();
+		}
+		iteractionMap.clear();
+
+	}
+
+	private void sendSifInteractions(Map<String, List<GeneInfo>> iteractionMap,
+			String shortName, PrintWriter out) {
+		InteractionsConnectionImplServlet.printMemoryUsage();
+		List<String> keyList = new ArrayList<String>(iteractionMap.keySet());
+		Collections.sort(keyList, String.CASE_INSENSITIVE_ORDER);
+		for (int i = 0; i < keyList.size(); i++) {
+			List<GeneInfo> itList = iteractionMap.get(keyList.get(i));
+			out.print(keyList.get(i) + "\t" + shortName);
+			for (int j = 0; j < itList.size(); j++) {
+				out.print("\t" + itList.get(j).gene);
+
+			}
+			out.println();
+		}
+		iteractionMap.clear();
+
+	}
+
+	private void processOneInteraction(
+			Map<String, List<GeneInfo>> iteractionMap, List<GeneInfo> geneList) {
+		Collections.sort(geneList);
+		for (int i = 0; i < geneList.size(); i++) {
+			if (geneList.get(0).role == TARGET_ROLE_ID)
+				continue;
+			List<GeneInfo> newGeneList = new ArrayList<GeneInfo>();
+			for (int j = 0; j < geneList.size(); j++) {
+				if (j == i)
+					continue;
+				GeneInfo geneInfo = geneList.get(j);
+				newGeneList.add(new GeneInfo(geneInfo.gene,
+						geneInfo.confidence, geneInfo.role));
+			}
+
+			if (!iteractionMap.containsKey(geneList.get(i).gene))
+				iteractionMap.put(geneList.get(i).gene, newGeneList);
+			else {
+				iteractionMap.get(geneList.get(i).gene).addAll(newGeneList);
+			}
+
+			break;
+
+		}
+	}
+ 
+
+	String getExportExistFileName(String context, String version, String shortName,
+			String presentBy, String methodName) {
+		String name = null;
+		StringBuffer sb = new StringBuffer(datafileDir + "export_" + context + "_"
+				+ version);
+		if (shortName != null && !shortName.trim().equals(""))
+			sb.append("_" + shortName);
+		else
+			sb.append("_all");
+		if (presentBy.equalsIgnoreCase(GeneSymbolOnly)
+				|| presentBy.equalsIgnoreCase(GENE_NAME))
+			sb.append("_GSO");
+		else if (presentBy.equalsIgnoreCase(EntrezIDOnly))
+			sb.append("_EIO");
+		else if (presentBy.equalsIgnoreCase(EntrezIDPreferred)
+				|| presentBy.equalsIgnoreCase(GENE_ID))
+			sb.append("_EIP");
+		else
+			sb.append("_GSP");
+		if (methodName.equalsIgnoreCase(GET_INTERACTIONS_SIF_FORMAT))
+			sb.append(".sif");
+		else
+			sb.append(".adj");
+
+		name = sb.toString();
+		if (new File(name).exists())
+			return name;
+		else
+			return null;
+
+	}
+	
+	private static void loadTargetRoleId(DB db) throws MongoException {
+		 
+		if (TARGET_ROLE_ID == 0) {
+			DBCollection collection = db.getCollection("role");
+			BasicDBObject whereQuery = new BasicDBObject();
+			whereQuery.put("name", TARGET);
+			DBObject match = new BasicDBObject("$match", whereQuery);
+			DBObject fields = new BasicDBObject();		 
+			fields.put("id", 1);
+			fields.put("_id", 0);
+			DBObject project = new BasicDBObject("$project", fields);
+			List<DBObject> pipeline = Arrays.asList(match, project);
+			AggregationOutput output = collection.aggregate(pipeline);
+			for (DBObject result : output.results()) {		
+				
+				  TARGET_ROLE_ID = new Double(result.get("id").toString()).intValue();
+				  break;
+			}
+		}
+
+	}
+	
+
+	private class GeneInfo implements Comparable<GeneInfo>{
+		String gene = null;
+		float confidence;
+		int role;
+
+		GeneInfo(String gene, float confidence, int role) {
+			this.gene = gene;
+			this.confidence = confidence;
+			this.role = role;
 		}
 		
-		return interactionTypeMap;
+		public int compareTo(GeneInfo compareGeneInfo) {
+			 
+			int compareRole = ((GeneInfo) compareGeneInfo).getRole(); 
+	 
+			//ascending order
+			return this.role - compareRole;
+	 
+			 
+		}
+		
+		int getRole()
+		{
+			return role;
+		}
+
 	}
 
 }
