@@ -11,8 +11,8 @@ import java.util.Date;
 public class CindyParseFile {
 
 	final static String cindy_stage_table = "cindy_stg";
-	final static String pairDir = "Z:\\archive\\shares\\af_lab\\CPTAC\\CINDy";
-	final static String outDir = "Z:\\archive\\shares\\af_lab\\CPTAC\\CINDy\\parse_files";
+	final static String pairDir = "/ifs/archive/shares/af_lab/CPTAC/ARACNe";
+	final static String outDir = "/ifs/archive/shares/af_lab/CPTAC/ARACNe/parse_files";
 
 	/**
 	 * @param args
@@ -21,7 +21,7 @@ public class CindyParseFile {
 
 		try {
 			 
-			/*parseCindyFile("cindy-blca.txt", "cindy_blca", "v1.1");
+			parseCindyFile("cindy-blca.txt", "cindy_blca", "v1.1");
 			parseCindyFile( "cindy-brca.txt", "cindy_brca", "v1.1");
 			parseCindyFile( "cindy-coad.txt", "cindy_coad", "v1.1");
 			parseCindyFile( "cindy-gbm.txt", "cindy_gbm", "v1.1");
@@ -40,7 +40,7 @@ public class CindyParseFile {
 			parseCindyFile( "cindy-skcm.txt", "cindy_skcm", "v1.1");
 			parseCindyFile( "cindy-stad.txt", "cindy_stad", "v1.1");
 			parseCindyFile( "cindy-thca.txt", "cindy_thca", "v1.1");
-			parseCindyFile( "cindy-ucec.txt", "cindy_ucec", "v1.1");*/
+			parseCindyFile( "cindy-ucec.txt", "cindy_ucec", "v1.1");
 
 		} catch (Exception e) {
 			// TODO Auto-generated catch block

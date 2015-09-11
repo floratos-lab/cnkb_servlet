@@ -13,8 +13,8 @@ import java.util.Date;
 public class AracneParseFile {
 
 	final static String aracne_stage_table = "aracne_stg" ;
-	final static String inputDir = "Z:\\archive\\shares\\af_lab\\CPTAC\\CINDy";
-	final static String outDir = "Z:\\archive\\shares\\af_lab\\CPTAC\\CINDy\\parse_files";
+	final static String inputDir = "/ifs/archive/shares/af_lab/CPTAC/ARACNe";
+	final static String outDir = "/ifs/archive/shares/af_lab/CPTAC/ARACNe/parse_files";
 	
 	/**
 	 * @param args
