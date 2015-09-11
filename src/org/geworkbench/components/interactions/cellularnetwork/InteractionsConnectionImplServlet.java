@@ -126,6 +126,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				logger.error("init()", e); //$NON-NLS-1$
 			} 
 
+		    //the following is comment out because it doesn't work in web1/web2 server.
+			// I don't think it is our code problem. It could cause by memory configuration by
+			//IT group. It only allocated 256M and the rest of memory use swap.
 			/*dataSource = new ComboPooledDataSource();
 			try {
 				dataSource.setDriverClass(mysql_jdbc_driver);
@@ -619,21 +622,8 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return true;
 	}
 
-	/*
-	 * private ResultSet getPairWiseInteraction_old(String geneId, String
-	 * context, String version) throws SQLException { String aSql = null; int
-	 * datasetId = getDatasetId(conn, context, version); aSql = "SELECT
-	 * pi.ms_id1, pi.ms_id2, pi.gene1, pi.gene2, pi.confidence_value,
-	 * pi.db1_xref, pi.db2_xref, it.interaction_type FROM pairwise_interaction
-	 * pi, interaction_dataset ids, interaction_type it"; aSql += " WHERE
-	 * (ms_id1= ?" + " OR ms_id2= ?"; aSql += ") AND pi.interaction_type=it.id
-	 * AND pi.id=ids.interaction_id And ids.dataset_id=" + datasetId; statement
-	 * = conn.prepareStatement(aSql); statement.setString(1, geneId);
-	 * statement.setString(2, geneId); ResultSet rs = statement.executeQuery();
-	 * 
-	 * return rs; }
-	 */
-
+	//this is for comparability to very old version of desktop version of geworkbench.
+	//Maybe need to clean up from here.
 	private ResultSet getPairWiseInteraction(String geneId, String context,
 			String version, Connection conn, PreparedStatement statement)
 			throws SQLException {
@@ -641,9 +631,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		
 		int interactomeVersionId = getInteractomeVersionId(context, version,
 				conn, statement);
-
+		String denormalized_table_name = getDenormalizedTableName(interactomeVersionId, conn);
 		String interactionIdList = getInteractionIdsByEntrezId(geneId, context,
-				version, conn, statement, interactomeVersionId);
+				version, conn, statement, interactomeVersionId, denormalized_table_name);
 
 		if (interactionIdList.equals(""))
 			interactionIdList = "0";
@@ -745,15 +735,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	}
 	
 	 
-
-	/*
-	 * private ResultSet getVersionDescriptor(String context) throws
-	 * SQLException { String aSql = null; aSql = "SELECT DISTINCT version,
-	 * authentication_yn FROM interaction_dataset, dataset where dataset.name='"
-	 * + context + "' AND interaction_dataset.dataset_id = dataset.id;";
-	 * statement = conn.prepareStatement(aSql); ResultSet rs =
-	 * statement.executeQuery(); return rs; }
-	 */
 
 	private ResultSet getVersionDescriptor(String context, Connection conn,
 			PreparedStatement statement) throws SQLException {
@@ -869,6 +850,27 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return id;
 	}
 
+	private String getDenormalizedTableName(int interactomeVersionId,
+			Connection connection)
+			throws SQLException {
+
+		String tableName = null;
+		String aSql = null;
+		aSql = "SELECT dtm.denormalized_table_name ";
+		aSql += "FROM denormalized_table_map dtm ";
+		aSql += "WHERE dtm.interactome_version_id=" + interactomeVersionId;
+		Statement stm = connection.createStatement();		 
+		ResultSet rs = stm.executeQuery(aSql);
+		while (rs.next()) { 
+			tableName = rs.getString("denormalized_table_name");
+			break;
+		}
+		rs.close();
+		stm.close();
+		return tableName;
+	}
+	
+	
 	private String getGeneDataByEntrezId(String geneId, Connection conn,
 			PreparedStatement statement) throws SQLException {
 
@@ -898,7 +900,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	}
 
 	private String getInteractionIdsByEntrezId(String geneId, String context,
-			String version, Connection conn, PreparedStatement statement, int interactomeVersionId)
+			String version, Connection conn, PreparedStatement statement, int interactomeVersionId, String denormalized_table_name)
 			throws SQLException {
 
 		String aSql = null;
@@ -907,8 +909,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		logger.debug("getInteractionIdsByEntrezId start query ...");
 
 		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM interactions_joined_part idl ";	
-		//aSql += "FROM partition_interactome_version idl ";	
+		aSql += "FROM " + denormalized_table_name + " idl ";	 
 		aSql += "WHERE idl.interactome_version_id =? ";
 		aSql += "AND idl.primary_accession = ? ";	 	 
 		aSql += "ORDER BY idl.interaction_id";
@@ -934,49 +935,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	}
 	 
 	
-	private String getInteractionIdsByEntrezIdOrGeneSymbol_orig(String geneId,
-			String geneSymbol, String context, String version, Connection conn,
-			PreparedStatement statement, int interactomeVersionId) throws SQLException {
-
-		String aSql = null;
-		String str = "";	
-		logger.info("start query ...");
-
-		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM interactions_joined idl ";		 
-		aSql += "WHERE idl.interactome_version_id =? ";
-		aSql += "AND ( idl.primary_accession = ? OR (idl.gene_symbol = ? AND idl.secondary_accession is not null ) ) ";	 	 
-		aSql += "ORDER BY idl.interaction_id";
-		
-		logger.info(aSql + "- "+  interactomeVersionId + ":" + geneId + ":" + geneSymbol);
-		
-		statement = conn.prepareStatement(aSql);
-		statement.setInt(1, interactomeVersionId);
-		statement.setInt(2, new Integer(geneId));
-		statement.setString(3, new String(geneSymbol));
-		ResultSet rs = statement.executeQuery();
-
-		logger.info("finist query ...");
-
-		while (rs.next()) {
-			if (!str.trim().equals(""))
-				str += ", ";
-			str += rs.getString("interaction_id");
-
-		}
-
-		statement.close();
-
-		return str;
-
-	}
-	
-	
-	 
-	
 	private String getInteractionIdsByEntrezIdOrGeneSymbol(String geneId,
 			String geneSymbol, String context, String version, Connection conn,
-			int interactomeVersionId) throws SQLException {
+			int interactomeVersionId, String denormalized_table_name) throws SQLException {
 
 		String aSql = null;
 		String str = "";
@@ -984,15 +945,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		logger.debug("start EntrezId query ...");
 	 
 		aSql = "SELECT interaction_id ";
-		aSql += "FROM interactions_joined_part ";	 
-		//aSql += "FROM partition_interactome_version ";	 
-		aSql += "WHERE interactome_version_id = " + interactomeVersionId;
-		//aSql += " AND (primary_accession = " + geneId + " OR gene_symbol = '" + geneSymbol + "') "; 		 
+		aSql += "FROM " + denormalized_table_name + " ";		 	 
+		aSql += "WHERE interactome_version_id = " + interactomeVersionId;		 
 		aSql += " AND primary_accession = " + geneId;
 		aSql += " UNION ";
 		aSql += "SELECT interaction_id ";
-		aSql += "FROM interactions_joined_part ";	
-		//aSql += "FROM partition_interactome_version ";	 
+		aSql += "FROM " + denormalized_table_name+ " ";	  
 		aSql += "WHERE (gene_symbol = '" + geneSymbol + "' AND primary_accession is null ) ";		 
 		aSql += "AND interactome_version_id = " + interactomeVersionId;		 
 	 
@@ -1036,10 +994,10 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	
 	
 	
-	
+	//this method here is for performance testing purpose in difference query way 
 	private String getInteractionIdsByEntrezIdOrGeneSymbol_test(String geneId,
 			String geneSymbol, String context, String version, Connection conn,
-			PreparedStatement statement) throws SQLException {
+			PreparedStatement statement, String denormalized_table_name) throws SQLException {
 
 		String aSql = null;
 		String str = "";
@@ -1049,7 +1007,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		logger.debug("start EntrezId query ...");
 
 		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM interactions_joined_part idl ";		 	
+		aSql += "FROM " + denormalized_table_name + " idl ";		 	
 		aSql += "WHERE idl.interactome_version_id =? ";
 		aSql += "AND idl.primary_accession = ? ";	 	 
 		aSql += "ORDER BY idl.interaction_id";
@@ -1072,7 +1030,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		logger.debug("start non EntrezId query ...");
 
 		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM interactions_joined_part idl ";		 
+		aSql += "FROM " + denormalized_table_name + " idl ";		 
 		aSql += "WHERE idl.interactome_version_id =? ";
 		aSql += "AND (idl.gene_symbol = ? AND idl.primary_accession is null ) ";	 	 
 		aSql += "ORDER BY idl.interaction_id";
@@ -1099,13 +1057,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 	private String getInteractionIdsByGeneSymbol(String geneSymbol,
 			String context, String version, Connection conn,
-			int  interactomeVersionId) throws SQLException {
+			int  interactomeVersionId, String denormalized_table_name) throws SQLException {
 
 		String aSql = null;
 		String str = "";
 		 
 		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM interactions_joined_part idl ";		 
+		aSql += "FROM " + denormalized_table_name + " idl ";		 
 		aSql += "WHERE idl.interactome_version_id =" + interactomeVersionId + " ";
 		aSql += "AND idl.gene_symbol =  '" + geneSymbol + "' ";	 	 
 		aSql += "ORDER BY idl.interaction_id"; 
@@ -1136,13 +1094,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	}
 
 	private String getInteractionIdsByGeneSymbolAndLimit(String geneSymbol,
-			 Connection conn, int interactomeVersionId, Integer rowLimit) throws SQLException {
+			 Connection conn, int interactomeVersionId, Integer rowLimit, String denormalized_table_name) throws SQLException {
 
 		String aSql = null;
 		String str = "";
 		 
-		aSql = "SELECT ijp.interaction_id as interaction_id FROM interactions_joined_part ijp ";
-		//aSql = "SELECT ijp.interaction_id as interaction_id FROM partition_interactome_version ijp ";
+		aSql = "SELECT ijp.interaction_id as interaction_id FROM " + denormalized_table_name + " ijp ";	 
 		aSql += "WHERE ijp.gene_symbol = '" + geneSymbol + "' ";
 		aSql += "AND ijp.interactome_version_id = " + interactomeVersionId + " ";
 		 
@@ -1164,12 +1121,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	}
 	
 	private String getInteractionIdsByGenesAndLimit(String geneSymbols,
-			 Connection conn, int interactomeVersionId, int rowLimit) throws SQLException {
+			 Connection conn, int interactomeVersionId, int rowLimit, String denormalized_table_name) throws SQLException {
 
 		String aSql = null;
 		String str = "";
 		 
-		aSql = "SELECT ijp.interaction_id as interaction_id FROM interactions_joined_part ijp ";
+		aSql = "SELECT ijp.interaction_id as interaction_id FROM " + denormalized_table_name + " ijp ";
 		aSql += "WHERE ijp.interactome_version_id = " + interactomeVersionId + " ";
 		aSql += "AND ijp.gene_symbol in (" + convertToQueryListString(geneSymbols) + ") ";		 
 		aSql += "ORDER BY ijp.confidence_value desc limit " + rowLimit;
@@ -1186,22 +1143,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 
 		return str;
 
-	}
-	
-
-	public ResultSet getInteractomeNames_orig(Connection conn,
-			PreparedStatement statement) throws SQLException {
-		String aSql = null;
-		aSql = "SELECT i.name, COUNT(i.name) as interaction_count ";
-		aSql += "FROM interactome i, interactome_version v, interaction_interactome_version iv ";
-		aSql += "WHERE i.id=v.interactome_id ";
-		aSql += "AND v.id=iv.interactome_version_id ";
-		aSql += "GROUP BY i.name";
-		statement = conn.prepareStatement(aSql);
-		ResultSet rs = statement.executeQuery();
-		return rs;
-	}
-	
+	}	 
 	
 	public ResultSet getInteractomeNames(Connection conn,
 			PreparedStatement statement) throws SQLException {
@@ -1234,8 +1176,9 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		String aSql = null;
 		int versionId = getInteractomeVersionId(context, version, conn,
 				statement);
+		String denormalized_table_name = getDenormalizedTableName(versionId, conn);
 		aSql = "select MIN(c.confidence_value) as confidence_value from  ";
-		aSql += "(SELECT ijp.confidence_value as confidence_value FROM interactions_joined_part ijp ";
+		aSql += "(SELECT ijp.confidence_value as confidence_value FROM " + denormalized_table_name + " ijp ";
 		aSql += "WHERE ijp.gene_symbol in (" + convertToQueryListString(geneSymbols) + ") ";
 		aSql += "AND ijp.interactome_version_id = " + versionId + " ";
 		aSql += "ORDER BY ijp.confidence_value desc limit " + rowLimit + ") c";
@@ -1254,12 +1197,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		
 		int interactomeVersionId = getInteractomeVersionId(context, version,
 				conn, statement);
-
+		String denormalized_table_name = getDenormalizedTableName(interactomeVersionId, conn);
 
 		String interactionIdList = getInteractionIdsByEntrezId(geneId, context,
-				version, conn, statement, interactomeVersionId);
+				version, conn, statement, interactomeVersionId, denormalized_table_name);
 
-		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId);
+		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId, denormalized_table_name);
 		statement = conn.prepareStatement(aSql);
 		ResultSet rs = statement.executeQuery();
 		// Statement statement = conn.createStatement();
@@ -1274,19 +1217,20 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		
 		int interactomeVersionId = getInteractomeVersionId(context, version,
 				conn, statement);
-
+		String denormalized_table_name = getDenormalizedTableName(interactomeVersionId, conn);
 		String interactionIdList = getInteractionIdsByGeneSymbol(geneSymbol,
-				context, version, conn, interactomeVersionId);
+				context, version, conn, interactomeVersionId, denormalized_table_name);
 
 		
-		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId);
+		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId, denormalized_table_name);
 		statement = conn.prepareStatement(aSql);
 		ResultSet rs = statement.executeQuery();
 
 		return rs;
 	}	 
 	 
-	private ResultSet getInteractionsByGenesAndLimit(String geneSymbol,
+	//used by NCI-DASHBOARD, but performance is not good, so replaced by getInteractionsByGeneSymbolAndLimit() 
+	private ResultSet getInteractionsByGenesAndLimit(String genes,
 			String context, String version, Connection conn, int rowLimit,
 			PreparedStatement statement) throws SQLException {
 		String aSql = null;
@@ -1294,18 +1238,20 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		int interactomeVersionId = getInteractomeVersionId(context, version,
 				conn, statement);
 
-		String interactionIdList = getInteractionIdsByGenesAndLimit(geneSymbol,
-				conn, interactomeVersionId, rowLimit);
+		String denormalized_table_name = getDenormalizedTableName(interactomeVersionId, conn);
+		
+		String interactionIdList = getInteractionIdsByGenesAndLimit(genes,
+				conn, interactomeVersionId, rowLimit, denormalized_table_name);
 
 		
-		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId);
+		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId, denormalized_table_name);
 		statement = conn.prepareStatement(aSql);
 		ResultSet rs = statement.executeQuery();
 
 		return rs;
 	}	 
 	
-	
+	//used by nci dashboard
 	private ResultSet getInteractionsByGeneSymbolAndLimit(String geneSymbol,
 			String context, String version, Connection conn, Integer rowLimit,
 			PreparedStatement statement) throws SQLException {
@@ -1313,12 +1259,13 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		
 		int interactomeVersionId = getInteractomeVersionId(context, version,
 				conn, statement);
+		String denormalized_table_name = getDenormalizedTableName(interactomeVersionId, conn);
 		logger.debug("get id list start ... ");
 		String interactionIdList = getInteractionIdsByGeneSymbolAndLimit(geneSymbol,
-				conn, interactomeVersionId, rowLimit);
+				conn, interactomeVersionId, rowLimit, denormalized_table_name);
 		logger.debug("get id list finish ... ");
 		
-		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId);
+		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId, denormalized_table_name);
 		statement = conn.prepareStatement(aSql);
 		ResultSet rs = statement.executeQuery();
 		logger.debug("get interactions finish ... ");
@@ -1335,11 +1282,12 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		int interactomeVersionId = getInteractomeVersionId(context, version,
 				conn, statement);
 
+		String denormalized_table_name = getDenormalizedTableName(interactomeVersionId, conn);
 		
 		String interactionIdList = getInteractionIdsByEntrezIdOrGeneSymbol(entrezId, geneSymbol, context,
-				version, conn, interactomeVersionId);		
+				version, conn, interactomeVersionId, denormalized_table_name);		
 		
-		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId);
+		aSql = getInteractionSqlbyIdList(interactionIdList, interactomeVersionId, denormalized_table_name);
 	 
 		logger.debug("start query ...");
 		logger.debug(aSql);		 
@@ -1386,15 +1334,14 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	
  
 	
-	private String getInteractionSqlbyIdList(String interactionIdList, int interactomeVersionId) {
+	private String getInteractionSqlbyIdList(String interactionIdList, int interactomeVersionId, String denormalized_table_name) {
 		String aSql = null;
 
 		if (interactionIdList.equals(""))
 			interactionIdList = "0";	
 		
 		aSql = "SELECT ijp.primary_accession as primary_accession, ijp.secondary_accession as secondary_accession, ijp.interaction_id as interaction_id, ijp.accession_db as accession_db, ijp.gene_symbol as gene_symbol, ijp.interaction_type as interaction_type, ijp.evidence_id as evidence_id, ijp.confidence_value as confidence_value, ijp.confidence_type as confidence_type ";
-		//aSql += "FROM partition_interactome_version ijp ";	
-		aSql += "FROM interactions_joined_part ijp ";
+	 	aSql += "FROM " + denormalized_table_name + " ijp ";
 		aSql += "WHERE ijp.interaction_id in (" + interactionIdList + ") ";	 
 		aSql += "AND ijp.interactome_version_id = " + interactomeVersionId + " ";
 		aSql += "ORDER BY ijp.interaction_id"; 
