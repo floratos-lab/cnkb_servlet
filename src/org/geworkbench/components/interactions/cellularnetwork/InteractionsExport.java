@@ -138,13 +138,13 @@ public class InteractionsExport {
 			throws SQLException, IOException {
 		String aSql = null;
 		Map<String, List<GeneInfo>> iteractionMap = new HashMap<String, List<GeneInfo>>();
-
+		String denormalized_table_name = getDenormalizedTableName(versionId, exportConn);
 		if (presentBy.equalsIgnoreCase(EntrezIDOnly))
 			aSql = "SELECT ijp.interaction_id, ijp.primary_accession, ijp.confidence_value, ijp.role_name ";
 		else
 			aSql = "SELECT ijp.interaction_id, ijp.gene_symbol, ijp.confidence_value, ijp.role_name ";
 
-		aSql += "FROM interactions_joined_part_new ijp ";
+		aSql += "FROM " + denormalized_table_name + " ijp ";
 		aSql += "WHERE ijp.interactome_version_id = " + versionId;
 		if (!interactionType.equalsIgnoreCase("ALL")) {
 			aSql += " and ijp.interaction_type ='" + interactionType + "'";
@@ -206,9 +206,9 @@ public class InteractionsExport {
 			Connection exportConn) throws SQLException, IOException {
 		String aSql = null;
 		Map<String, List<GeneInfo>> iteractionMap = new HashMap<String, List<GeneInfo>>();
-
+		String denormalized_table_name = getDenormalizedTableName(versionId, exportConn);
 		aSql = "SELECT ijp.interaction_id, ijp.primary_accession, ijp.secondary_accession, ijp.gene_symbol, ijp.confidence_value, ijp.role_name ";
-		aSql += "FROM interactions_joined_part_new ijp ";
+		aSql += "FROM " + denormalized_table_name + " ijp ";
 		aSql += "WHERE ijp.interactome_version_id = " + versionId;
 		if (!interactionType.equalsIgnoreCase("ALL")) {
 			aSql += " and ijp.interaction_type ='" + interactionType + "'";
@@ -295,12 +295,12 @@ public class InteractionsExport {
 			Connection exportConn) throws SQLException, IOException {
 		String aSql = null;
 		Map<String, List<GeneInfo>> iteractionMap = new HashMap<String, List<GeneInfo>>();
-
+		String denormalized_table_name = getDenormalizedTableName(versionId, exportConn);
 		if (presentBy.equalsIgnoreCase(EntrezIDOnly))
 			aSql = "SELECT ijp.interaction_id, ijp.primary_accession, ijp.role_name ";
 		else
 			aSql = "SELECT ijp.interaction_id, ijp.gene_symbol, ijp.role_name ";
-		aSql += "FROM interactions_joined_part_new ijp ";
+		aSql += "FROM " + denormalized_table_name + " ijp ";
 		aSql += "WHERE ijp.interactome_version_id = " + versionId;
 		aSql += " and ijp.interaction_type ='" + interactionType + "'";
 		//aSql += " order by ijp.interaction_id";
@@ -363,9 +363,9 @@ public class InteractionsExport {
 			Writer out, Connection exportConn) throws SQLException, IOException {
 		String aSql = null;
 		Map<String, List<GeneInfo>> iteractionMap = new HashMap<String, List<GeneInfo>>();
-
+		String denormalized_table_name = getDenormalizedTableName(versionId, exportConn);
 		aSql = "SELECT ijp.interaction_id, ijp.primary_accession, ijp.secondary_accession, ijp.gene_symbol, ijp.role_name ";
-		aSql += "FROM interactions_joined_part_new ijp ";
+		aSql += "FROM " + denormalized_table_name + " ijp ";
 		aSql += "WHERE ijp.interactome_version_id = " + versionId;
 		aSql += " and ijp.interaction_type ='" + interactionType + "' ";
 		//aSql += " order by ijp.interaction_id";
@@ -625,5 +625,26 @@ public class InteractionsExport {
 		}
 
 	}
+	
+	private String getDenormalizedTableName(int interactomeVersionId,
+			Connection connection)
+			throws SQLException {
+
+		String tableName = null;
+		String aSql = null;
+		aSql = "SELECT dtm.denormalized_table_name ";
+		aSql += "FROM denormalized_table_map dtm ";
+		aSql += "WHERE dtm.interactome_version_id=" + interactomeVersionId;
+		Statement stm = connection.createStatement();		 
+		ResultSet rs = stm.executeQuery(aSql);
+		while (rs.next()) { 
+			tableName = rs.getString("denormalized_table_name");
+			break;
+		}
+		rs.close();
+		stm.close();
+		return tableName;
+	}
+	
 
 }
