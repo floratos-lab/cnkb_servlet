@@ -1,0 +1,6 @@
+mysql.jdbc.Driver=com.mysql.jdbc.Driver
+mysql.passwd=DB_PASSWORD
+mysql.user=DB_USER
+mysql.url=jdbc:mysql://localhost:3306/cellnet_kbase?autoReconnect=false
+dataset.user=AUTHORIZED_ID
+dataset.passwd=AUTHORIZED_PASSWORD
