@@ -35,7 +35,6 @@ public class InteractionsExport {
 	private static final String GeneSymbolOnly = "Gene Symbol Only";
 
 	private static final String EntrezIDPreferred = "Entrez ID Preferred";
-	private static final String GeneSymbolPreferred = "Gene Symbol Preferred";
 	private static final String GET_INTERACTIONS_SIF_FORMAT = "getInteractionsSifFormat";
 
 	static String datafileDir = null;
@@ -69,6 +68,7 @@ public class InteractionsExport {
 				out.println(line);
 				line =  br.readLine();
 			}
+			br.close();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

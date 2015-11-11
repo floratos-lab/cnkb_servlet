@@ -1,44 +1,31 @@
 package org.geworkbench.components.interactions.cellularnetwork;
 
-import org.apache.log4j.Logger;
-
-import com.mchange.v2.c3p0.ComboPooledDataSource; 
-//import java.beans.PropertyVetoException;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintWriter;
-import java.sql.Connection;  
+import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.sql.PreparedStatement; 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
-//import java.util.Date;
 
 import javax.servlet.ServletException;
 import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
- 
 import javax.xml.bind.DatatypeConverter;
+
+import org.apache.log4j.Logger;
 /**
  * @author oleg stheynbuk
  * 
- *         tmp. Servlet that will allow clients execute SQL query over HTTP from
- *         outside the firewall
- * 
- * @param db
- *            and query string.
- * 
- * @return query executed, result set processed and send as a text; for more
- *         info
- * @see ResultSetlUtil
+ * Servlet that will allow clients execute SQL query over HTTP to CNKB database.
  * 
  */
 public class InteractionsConnectionImplServlet extends HttpServlet {
@@ -92,7 +79,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 	private static String mysql_url;
 	private static String dataset_passwd;
 	private static String dataset_user;
-	private ComboPooledDataSource dataSource;
 
 	@Override
 	public void init() throws ServletException {
@@ -126,25 +112,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 				logger.error("init()", e); //$NON-NLS-1$
 			} 
 
-		    //the following is comment out because it doesn't work in web1/web2 server.
-			// I don't think it is our code problem. It could cause by memory configuration by
-			//IT group. It only allocated 256M and the rest of memory use swap.
-			/*dataSource = new ComboPooledDataSource();
-			try {
-				dataSource.setDriverClass(mysql_jdbc_driver);
-			} catch (PropertyVetoException pve) {
-				logger.error(pve.getMessage());
-			}
-			dataSource.setJdbcUrl(mysql_url);
-			dataSource.setUser(mysql_user);
-			dataSource.setPassword(mysql_passwd);
-			dataSource.setAcquireRetryAttempts(10);
-			dataSource.setAcquireIncrement(3);
-			dataSource.setIdleConnectionTestPeriod(100);
-			dataSource.setMaxPoolSize(3);		 
-			dataSource.setMaxStatementsPerConnection(100);*/
-		 
-			
 		} catch (IOException ie) {
 			logger.error(
 					"init() - exception  in InteractionsConnectionImplServlet init  ---- ", ie); //$NON-NLS-1$
@@ -958,32 +925,14 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		  
 		ResultSet rs = statement.executeQuery(aSql);  
 		
-		/*aSql = "SELECT distinct i.id as interaction_id ";
-		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
-		aSql += "WHERE ip.participant_id = pe.id ";
-		aSql += "AND ip.interaction_id = i.id ";		 
-		aSql += "AND i.id = iiv.interaction_id ";
-		aSql += "AND iiv.interactome_version_id = " + interactomeVersionId + " ";
-		aSql += "AND ((pe.primary_accession = " + geneId + ") OR (pe.gene_symbol = '" + geneSymbol +  "' AND pe.secondary_accession is not null))";
-		
-		Statement statement = conn.createStatement();		  
-		ResultSet rs = statement.executeQuery(aSql); */
-		
-		/*prepStatement.setInt(1, interactomeVersionId);
-		prepStatement.setInt(2, new Integer(geneId));
-		prepStatement.setString(3, new String(geneSymbol));
-		ResultSet rs = prepStatement.executeQuery();*/
-		
 		logger.debug(aSql);
 
 		logger.info("finist EntrezId query ...");
 
-		int rowNum = 0;
 		while (rs.next()) {
 			if (!str.trim().equals(""))
 				str += ", ";
 			str += rs.getString("interaction_id");
-			rowNum++;
 		}
 		statement.close();
 		rs.close();
@@ -991,69 +940,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		return str;
 
 	}
-	
-	
-	
-	//this method here is for performance testing purpose in difference query way 
-	private String getInteractionIdsByEntrezIdOrGeneSymbol_test(String geneId,
-			String geneSymbol, String context, String version, Connection conn,
-			PreparedStatement statement, String denormalized_table_name) throws SQLException {
-
-		String aSql = null;
-		String str = "";
-		int interactomeVersionId = getInteractomeVersionId(context, version,
-				conn, statement);
-
-		logger.debug("start EntrezId query ...");
-
-		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM " + denormalized_table_name + " idl ";		 	
-		aSql += "WHERE idl.interactome_version_id =? ";
-		aSql += "AND idl.primary_accession = ? ";	 	 
-		aSql += "ORDER BY idl.interaction_id";
-		statement = conn.prepareStatement(aSql);
-		statement.setInt(1, interactomeVersionId);
-		statement.setInt(2, new Integer(geneId));	 
-		ResultSet rs = statement.executeQuery(); 		
-
-		logger.debug("finish EntrezId query ...");
-
-		while (rs.next()) {
-			if (!str.trim().equals(""))
-				str += ", ";
-			str += rs.getString("interaction_id");
-
-		}
-
-		statement.close();
-		
-		logger.debug("start non EntrezId query ...");
-
-		aSql = "SELECT idl.interaction_id ";
-		aSql += "FROM " + denormalized_table_name + " idl ";		 
-		aSql += "WHERE idl.interactome_version_id =? ";
-		aSql += "AND (idl.gene_symbol = ? AND idl.primary_accession is null ) ";	 	 
-		aSql += "ORDER BY idl.interaction_id";
-		statement = conn.prepareStatement(aSql);
-		statement.setInt(1, interactomeVersionId);		 
-		statement.setString(2, new String(geneSymbol));
-		rs = statement.executeQuery(); 
-		
-		logger.debug("finished non EntrezId query ...");
-		
-		while (rs.next()) {
-			if (!str.trim().equals(""))
-				str += ", ";
-			str += rs.getString("interaction_id");
-
-		}
-		 
-		statement.close();
-
-		return str;
-
-	}
-	
 
 	private String getInteractionIdsByGeneSymbol(String geneSymbol,
 			String context, String version, Connection conn,
@@ -1068,15 +954,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		aSql += "AND idl.gene_symbol =  '" + geneSymbol + "' ";	 	 
 		aSql += "ORDER BY idl.interaction_id"; 
 		
-		/*aSql = "SELECT i.id ";
-		aSql += "FROM physical_entity pe, interaction_participant ip, interaction i, interaction_interactome_version  iiv ";
-		aSql += "WHERE ip. participant_id = pe.id ";
-		aSql += "AND ip.interaction_id = i.id ";
-		aSql += "AND i.id = iiv.interaction_id ";
-		aSql += "AND iiv.interactome_version_id =? ";
-		aSql += "AND pe.gene_symbol = ?";*/
-
-
 		Statement statement = conn.createStatement();		  
 		ResultSet rs = statement.executeQuery(aSql);  
 		 
@@ -1294,41 +1171,7 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		statement = conn.prepareStatement(aSql);	 
 		ResultSet rs = statement.executeQuery(); 
 		logger.debug("after query ...");
-		
-		/*String aSql = null;
-		String qubSql = null;
-		int interactomeVersionId = getInteractomeVersionId(context, version,
-				conn, statement);
-		logger.info("start query ...");
-		qubSql = "SELECT distinct i1.* ";
-		qubSql += "FROM physical_entity pe1, interaction_participant ip1, interaction i1, interaction_interactome_version  iiv1 ";
-		qubSql += "WHERE ip1.participant_id = pe1.id ";
-		qubSql += "AND ip1.interaction_id = i1.id ";
-		qubSql += "AND i1.id = iiv1.interaction_id ";	 
-		qubSql += "AND iiv1.interactome_version_id =? ";
-		qubSql += "AND ( pe1.primary_accession = ? OR (pe1.gene_symbol = ? AND pe1.secondary_accession is not null ) )";
 
-		aSql = "SELECT pe.primary_accession as primary_accession, pe.secondary_accession as secondary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,it.name as interaction_type, ie.evidence_id as evidence_id, ic.score as confidence_value, ct.id as confidence_type ";
-		aSql += "FROM (("
-				+ qubSql
-				+ ") as i, physical_entity pe, interaction_participant ip, interaction_type it, db_source ds) ";
-		aSql += "left join  interaction_evidence ie on (i.id=ie.interaction_id) ";
-		aSql += "left join interaction_confidence ic on (i.id=ic.interaction_id) ";
-		aSql += "left join confidence_type ct on (ic.confidence_type_id=ct.id) ";
-		aSql += "WHERE ip.interaction_id=i.id ";
-		aSql += "AND pe.accession_db=ds.id ";
-		aSql += "AND pe.id=ip.participant_id ";
-		aSql += "AND i.interaction_type=it.id  ";
-		aSql += "ORDER BY i.id";
-
-		statement = conn.prepareStatement(aSql);
-		statement.setInt(1, interactomeVersionId);
-		statement.setInt(2, new Integer(entrezId));
-		statement.setString(3, new String(geneSymbol));
-		ResultSet rs = statement.executeQuery();
-
-		logger.info("after query ...");*/
- 
 		return rs;
 	}	
 	
@@ -1345,19 +1188,6 @@ public class InteractionsConnectionImplServlet extends HttpServlet {
 		aSql += "WHERE ijp.interaction_id in (" + interactionIdList + ") ";	 
 		aSql += "AND ijp.interactome_version_id = " + interactomeVersionId + " ";
 		aSql += "ORDER BY ijp.interaction_id"; 
-
-		/*aSql = "SELECT pe.primary_accession as primary_accession, pe.secondary_accession as secondary_accession, ds.name as accession_db, pe.gene_symbol as gene_symbol, i.id as interaction_id,it.name as interaction_type, ie.evidence_id as evidence_id, ic.score as confidence_value, ct.id as confidence_type  ";
-		aSql += "FROM (physical_entity pe, interaction_participant ip, interaction i, interaction_type it, db_source ds) ";
-		aSql += "left join  interaction_evidence ie on (i.id=ie.interaction_id) ";
-		aSql += "left join interaction_confidence ic on (i.id=ic.interaction_id) ";
-		aSql += "left join confidence_type ct on (ic.confidence_type_id=ct.id) ";
-		aSql += "WHERE i.id in (" + interactionIdList + ") ";
-		aSql += "AND pe.id=ip.participant_id ";
-		aSql += "AND pe.accession_db=ds.id ";
-		aSql += "AND ip.interaction_id=i.id ";
-		aSql += "AND i.interaction_type=it.id ";
-		aSql += "ORDER BY i.id, ct.id";*/
-
 
 		return aSql;
 
